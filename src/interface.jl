@@ -83,7 +83,7 @@ function Oscar.defining_polynomial(x::DBField)
   if isdefined(x, :polynomial)
     return x.poly
   end
-  query = "SELECT polynomial " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT polynomial FROM fields.field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data])
   data = columntable(result)[1][1]
@@ -100,9 +100,8 @@ function Oscar.degree(x::DBField)
   if x.degree != -1
     return x.degree
   end
-  query = "SELECT degree " * "FROM fields.field" * " WHERE field_id = \$1"
-  data = x.id
-  result = execute(x.connection, query, [data])
+  query = "SELECT degree FROM fields.field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
   x.degree = columntable(result)[1][1]
   return x.degree
 end
@@ -121,9 +120,8 @@ function Oscar.signature(x::DBField)
     return x.signature
   end
   n = degree(x)
-  query = "SELECT real_embeddings " * "FROM fields.field" * " WHERE field_id = \$1"
-  data = x.id
-  result = execute(x.connection, query, [data])
+  query = "SELECT real_embeddings FROM fields.field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.data])
   real_embs = columntable(result)[1][1]
   x.signature = (real_embs, divexact(n-real_embs, 2))
   return x.signature
@@ -133,9 +131,9 @@ function Oscar.discriminant(x::DBField)
   if isdefined(x, :discriminant)
     return x.discriminant
   end
-  query = "SELECT discriminant " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT discriminant FROM fields.field WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [data])
+  result = execute(x.connection, query, [x.id])
   x.discriminant = fmpz(BigInt(columntable(result)[1][1]))
   return x.discriminant
 end
@@ -144,9 +142,8 @@ function ramified_primes(x::DBField)
   if isdefined(x, :ramified_primes)
     return x.ramified_primes
   end
-  query = "SELECT ramified_primes " * "FROM fields.field" * " WHERE field_id = \$1"
-  data = x.id
-  result = execute(x.connection, query, [data])
+  query = "SELECT ramified_primes FROM fields.field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
   tb = columntable(result)[1][1]
   if tb === missing
     return missing
@@ -163,14 +160,14 @@ function Oscar.class_group(x::DBField)
   if isdefined(x, :class_group)
     return x.class_group
   end
-  query = "SELECT class_group_id " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT class_group_id FROM fields.field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data])
   tb = columntable(result)[1][1]
   if tb === missing
     return missing
   end
-  query1 = "SELECT structure " * "FROM fields.class_group" * " WHERE class_group_id = \$1"
+  query1 = "SELECT structure FROM fields.class_group WHERE class_group_id = \$1"
   result1 = execute(x.connection, query1, [tb])
   str = columntable(result)[1][1]
   invs = Vector{fmpz}(undef, length(str))
@@ -200,20 +197,20 @@ function Oscar.galois_group(x::DBField)
     return x.galois_group
   end
   #I need to retrieve it from the database.
-  query = "SELECT group_id " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT group_id FROM fields.field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   data = columntable(result)[1][1]
   if data === missing
     return missing
   end
-  query1 = "SELECT transitive_group_id " * "FROM fields.group" * " WHERE group_id = \$1"
+  query1 = "SELECT transitive_group_id FROM fields.group WHERE group_id = \$1"
   result1 = execute(x.connection, query1, [data])
   data1 = columntable(result1)[1][1]
   if data1 != missing
     x.galois_group = transitive_group(degree(x), data1)
     return x.galois_group
   end
-  query2 = "SELECT group_order, small_group_id " * "FROM fields.group" * " WHERE group_id = \$1"
+  query2 = "SELECT group_order, small_group_id FROM fields.group WHERE group_id = \$1"
   result2 = execute(x.connection, query2, [data])
   data2 = columntable(result2)
   if data2[2][1] !== missing
@@ -222,7 +219,7 @@ function Oscar.galois_group(x::DBField)
     H = isomorphic_transitive_perm_group(PC, degree(x))
     return H
   end
-  query3 = "SELECT generators " * "FROM fields.group" * " WHERE group_id = \$1"
+  query3 = "SELECT generators FROM fields.group WHERE group_id = \$1"
   result3 = execute(x.connection, query3, [data])
   data3 = columntable(result2)[1][1]
   S = symmetric_group(degree(x))
@@ -247,7 +244,7 @@ function is_cm(x::DBField)
       return false
     end
   end
-  query = "SELECT CM " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT CM FROM fields.field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   data = columntable(result)[1][1]
   if data === missing
@@ -266,7 +263,7 @@ function automorphisms_order(x::DBField)
   if x.automorphisms_order != -1
     return x.automorphisms_order
   end
-  query = "SELECT automorphisms_order " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT automorphisms_order FROM fields.field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   data = columntable(result)[1][1]
   if data === missing
@@ -280,7 +277,7 @@ function torsion_units_size(x::DBField)
   if x.torsion_size!= -1
     return x.torsion_size
   end
-  query = "SELECT torsion_size " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT torsion_size FROM fields.field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   data = columntable(result)[1][1]
   if data === missing
@@ -300,7 +297,7 @@ function assumes_GRH(x::DBField)
       return false
     end
   end
-  query = "SELECT GRH " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT GRH FROM fields.field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   data = columntable(result)[1][1]
   if data === missing
@@ -325,7 +322,7 @@ function has_canonical_defining_polynomial(x::DBField)
       return false
     end
   end
-  query = "SELECT is_canonical_poly " * "FROM fields.field" * " WHERE field_id = \$1"
+  query = "SELECT is_canonical_poly FROM fields.field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   data = columntable(result)[1][1]
   if data === missing
@@ -368,7 +365,7 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
                          signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[-1], ramified_at::Vector{fmpz} = fmpz[-1],
                          galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
                          class_group_structure::Vector{fmpz} = fmpz[-1], 
-                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}(), only_count::Type{Val{T}} = Val{T}) where T
+                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}(), only_count::Type{Val{T}} = Val{false}) where T
 
 
   parameters = String[]
@@ -492,16 +489,20 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
       end
     end
   end
+
   #Now, I can do the query
   if only_count == Val{true}
-    query = "SELECT COUNT(*)" * "FROM fields.field" * " WHERE "
+    query = "SELECT COUNT(*) FROM fields.field"
   else
-    query = "SELECT field_id " * "FROM fields.field" * " WHERE "
+    query = "SELECT field_id FROM fields.field"
   end
-  for i = 1:length(parameters)-1
-    query = query * parameters[i] * " AND "
+  if !isempty(values)
+    query *= " WHERE "
+    for i = 1:length(parameters)-1
+      query = query * parameters[i] * " AND "
+    end
+    query =  query * parameters[end]
   end
-  query =  query * parameters[end]
   result = execute(conn, query, values)
   data = columntable(result)[1]
   if only_count == Val{true}
@@ -519,8 +520,8 @@ function _find_group_id(conn::LibPQ.Connection, G::PermGroup)
   id = transitive_group_identification(G)
   if id != -1
     #GREAT! Unique identification.
-    query = "SELECT group_id " * "FROM fields.group" * " WHERE degree = \$1 AND transitive_group_id = \$2"
-    values = [d, id]
+    query = "SELECT group_id FROM fields.group WHERE degree = \$1 AND transitive_group_id = \$2"
+    values = Int[d, id]
     result = execute(conn, query, values)
     data = columntable(result)[1][1]
     return data
@@ -530,7 +531,7 @@ function _find_group_id(conn::LibPQ.Connection, G::PermGroup)
   if o < 2000 && o != 1024
     #Now, I try the small group id
     id = small_group_identification(G)
-    query = "SELECT group_id " * "FROM fields.group" * " WHERE degree = \$1 AND group_order = \$2 AND small_group_id = \$3"
+    query = "SELECT group_id FROM fields.group WHERE degree = \$1 AND group_order = \$2 AND small_group_id = \$3"
     values = [d, order, id[2]]
     result = execute(conn, query, values)
     data = columntable(result)[1][1]
@@ -538,7 +539,7 @@ function _find_group_id(conn::LibPQ.Connection, G::PermGroup)
   end
   #Sad. That's quite hard now. I have to search for all the groups
   #with a given order and check isomorphism.
-  query = "SELECT group_id, generators " * "FROM fields.group" * " WHERE degree = \$1 AND group_order = \$2"
+  query = "SELECT group_id, generators FROM fields.group WHERE degree = \$1 AND group_order = \$2"
   result = execute(conn, query, [d, o])
   data = Tables.rows(result)
   ind = 0
@@ -556,12 +557,12 @@ end
 
 function _find_class_group_id(conn::LibPQ.Connection, C::GrpAbFinGen)
   if isone(order(C))
-    query = "SELECT class_group_id " * "FROM fields.class_group" * " WHERE group_order = \$1"
+    query = "SELECT class_group_id FROM fields.class_group WHERE group_order = \$1"
     result = execute(conn, query, [1])
     return columntable(result)[1][1]
   end
   invs = snf(C)[1].snf
-  query = "SELECT class_group_id " * "FROM fields.class_group" * " WHERE structure = \$1"
+  query = "SELECT class_group_id FROM fields.class_group WHERE structure = \$1"
   result = execute(conn, query, [invs])
   return columntable(result)[1][1]
 end
@@ -570,7 +571,7 @@ function _find_class_group_ids(conn::LibPQ.Connection, ranks::Dict{fmpz, Tuple{I
   #I want to find the class group ids of the class group having the rank as required.
   divs = [BigInt(x) for x in keys(ranks)]
   sort!(divs)
-  query = "SELECT class_group_id, prime_divisors, ranks " * "FROM fields.class_group" * " WHERE prime_divisors @> \$1"
+  query = "SELECT class_group_id, prime_divisors, ranks FROM fields.class_group WHERE prime_divisors @> \$1"
   result = execute(conn, query, [divs])
   data = Tables.rows(result)
   #I assume that the divisors are ordered.
@@ -601,7 +602,7 @@ end
 function find_completeness_data(conn::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
   idG = _find_group_id(conn, G)
   @assert idG !== missing
-  query = "SELECT GRH, discriminant_bound " * "FROM fields.completeness" * " WHERE group_id = \$1 AND real_embeddings = \$2"
+  query = "SELECT GRH, discriminant_bound FROM fields.completeness WHERE group_id = \$1 AND real_embeddings = \$2"
   result = execute(conn, query, [idG, signature[1]])
   data = Tables.rows(result)
   if isempty(data)
@@ -641,10 +642,10 @@ end
 ################################################################################
 
 function insert_complete_table(connection::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup, discriminant_bound::fmpz, GRH::Bool = true, signature::Tuple{Int, Int} = (-1, 0); check::Bool = true)
-  g_id = _find_group_id(conn, galois_group)
+  g_id = _find_group_id(connection, galois_group)
   if g_id === missing
-    insert_group(conn, galois_group)
-    g_id = _find_group_id(conn, galois_group)
+    insert_group(connection, galois_group)
+    g_id = _find_group_id(connection, galois_group)
   end
   #I compute the number of automorphisms of the fields
   #If H is the subgroup fixing K, the number of automorphisms is equal to
@@ -658,7 +659,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
     if !have_signature
       real_embs = Hecke.signature(K)[1]
     end
-    pol = BigFloat[BigFloat(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
+    pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
     if check
       lf = load_fields(connection, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = Hecke.signature(K))
@@ -708,12 +709,12 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
 end
 
 
-function insert_fields(fields::Vector{AnticNumberField}, connection; check::Bool = true)
+function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Connection; check::Bool = true, galois_group::PermGroup = symmetric_group(1))
   if order(galois_group) > 1
-    g_id = _find_group_id(conn, galois_group)
+    g_id = _find_group_id(connection, galois_group)
     if g_id === missing
-      insert_group(conn, galois_group)
-      g_id = _find_group_id(conn, galois_group)
+      insert_group(connection, galois_group)
+      g_id = _find_group_id(connection, galois_group)
     end
   else
     g_id = 0
@@ -721,9 +722,10 @@ function insert_fields(fields::Vector{AnticNumberField}, connection; check::Bool
   
   execute(conn, "BEGIN;")
   for K in fields
+    @assert isdefining_polynomial_nice(K)
     d = discriminant(maximal_order(K))
     real_embs = Hecke.signature(K)[1]
-    pol = BigFloat[BigFloat(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
+    pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
     if check
       lf = load_fields(connection, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
@@ -945,16 +947,16 @@ end
 ################################################################################
 
 function set_polynomial(x::DBField, f::fmpq_poly; is_canonical::Bool = false)
-  query = "UPDATE fields.field " * "SET polynomial = \$1, is_canonical_poly = \$2 " * "WHERE field_id = \$3"
+  query = "UPDATE fields.field SET polynomial = \$1, is_canonical_poly = \$2 WHERE field_id = \$3"
   pol = BigInt[BigInt(coeff(f, i)) for i = 0:degree(f)]
-  execute(conn, query, (pol, is_canonical, x.id))
+  execute(x.connection, query, (pol, is_canonical, x.id))
   return nothing
 end
 
 function set_ramified_primes(x::DBField, lp::Vector{fmpz})
   rp = BigInt[BigInt(x) for x in lp]
-  query = "UPDATE fields.field " * "SET ramified_primes = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (rp, x.id))
+  query = "UPDATE fields.field  SET ramified_primes = \$1  WHERE field_id = \$2"
+  execute(x.connection, query, (rp, x.id))
   return nothing
 end
 
@@ -964,14 +966,14 @@ function set_galois_group(x::DBField, G::PermGroup)
     insert_group(x.connection, G)
     id = _find_group_id(x.connection, G)
   end
-  query = "UPDATE fields.field " * "SET group_id = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (id, x.id))
+  query = "UPDATE fields.field  SET group_id = \$1  WHERE field_id = \$2"
+  execute(x.connection, query, (id, x.id))
   return nothing
 end
 
 function set_regulator(x::DBField, r::arb)
-  query = "UPDATE fields.field " * "SET regulator = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (BigFloat(r), x.id))
+  query = "UPDATE fields.field SET regulator = \$1  WHERE field_id = \$2"
+  execute(x.connection, query, (BigFloat(r), x.id))
   return nothing
 end
 
@@ -981,26 +983,26 @@ function set_class_group(x::DBField, C::GrpAbFinGen; GRH::Bool = true)
     insert_class_group(x.connection, C)
     id = _find_class_group_id(x.connection, C)
   end 
-  query = "UPDATE fields.field " * "SET class_group_id = \$1, GRH = \$2 " * "WHERE field_id = \$3"
-  execute(conn, query, (id, GRH, x.id))
+  query = "UPDATE fields.field  SET class_group_id = \$1, GRH = \$2  WHERE field_id = \$3"
+  execute(x.connection, query, (id, GRH, x.id))
   return nothing
 end
 
 function set_CM_property(x::DBField, iscm::Bool)
-  query = "UPDATE fields.field " * "SET CM = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (iscm, x.id))
+  query = "UPDATE fields.field  SET CM = \$1  WHERE field_id = \$2"
+  execute(x.connection, query, (iscm, x.id))
   return nothing
 end
 
 function set_torsion_size(x::DBField, n::Int)
-  query = "UPDATE fields.field " * "SET torsion_size = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (n, x.id))
+  query = "UPDATE fields.field  SET torsion_size = \$1  WHERE field_id = \$2"
+  execute(x.connection, query, (n, x.id))
   return nothing
 end
 
 function set_automorphisms_order(x::DBField, n::Int)
-  query = "UPDATE fields.field " * "SET automorphisms_order = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (n, x.id))
+  query = "UPDATE fields.field SET automorphisms_order = \$1 WHERE field_id = \$2"
+  execute(x.connection, query, (n, x.id))
   return nothing
 end
 
@@ -1063,8 +1065,8 @@ function set_subfields(x::DBField)
     y = find_DBfield(lS[i])
     ids[i] = y.id
   end
-  query = "UPDATE fields.field " * "SET subfields = \$1 " * "WHERE field_id = \$2"
-  execute(conn, query, (ids, x.id))
+  query = "UPDATE fields.field SET subfields = \$1 WHERE field_id = \$2"
+  execute(x.connection, query, (ids, x.id))
   return nothing
 end
 
