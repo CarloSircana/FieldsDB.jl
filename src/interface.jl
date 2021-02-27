@@ -79,14 +79,20 @@ end
 #
 ################################################################################
 
+function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
+  s = split(x[2:end-1], ",")
+  return [parse(BigInt, split(ss, ".")[1]) for ss in s]
+end
+
 function Oscar.defining_polynomial(x::DBField)
-  if isdefined(x, :polynomial)
-    return x.poly
-  end
+  #if isdefined(x, :polynomial)
+  #  return x.poly
+  #end
   query = "SELECT polynomial " * "FROM fields.field" * " WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [data])
+  result = execute(x.connection, query, [data], column_types = Dict(:polynomial => Vector{BigInt}))
   data = columntable(result)[1][1]
+  @show data
   coeffs = Vector{fmpz}(undef, length(data))
   for i = 1:length(coeffs)
     coeffs[i] = fmpz(BigInt(data[i]))
@@ -135,7 +141,7 @@ function Oscar.discriminant(x::DBField)
   end
   query = "SELECT discriminant " * "FROM fields.field" * " WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [data])
+  result = execute(x.connection, query, [data], column_types = Dict(:discriminant => BigInt))
   x.discriminant = fmpz(BigInt(columntable(result)[1][1]))
   return x.discriminant
 end
@@ -368,7 +374,7 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
                          signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[-1], ramified_at::Vector{fmpz} = fmpz[-1],
                          galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
                          class_group_structure::Vector{fmpz} = fmpz[-1], 
-                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}(), only_count::Type{Val{T}} = Val{T}) where T
+                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}(), only_count::Type{Val{T}} = Val{false}) where T
 
 
   parameters = String[]
@@ -708,7 +714,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
 end
 
 
-function insert_fields(fields::Vector{AnticNumberField}, connection; check::Bool = true)
+function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = true, galois_group = symmetric_group(1))
   if order(galois_group) > 1
     g_id = _find_group_id(conn, galois_group)
     if g_id === missing
@@ -726,7 +732,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection; check::Bool
     pol = BigFloat[BigFloat(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
     if check
-      lf = load_fields(connection, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
+      lf = load_fields(conn, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
       if !isempty(lf)
         found = false
         for x in lf
@@ -749,7 +755,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection; check::Bool
         degree = [deg],
         group_id = [g_id]
         ),
-        connection,
+        conn,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -765,7 +771,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection; check::Bool
         discriminant = [BigInt(d)], 
         degree = [deg]
         ),
-        connection,
+        conn,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -982,7 +988,7 @@ function set_class_group(x::DBField, C::GrpAbFinGen; GRH::Bool = true)
     id = _find_class_group_id(x.connection, C)
   end 
   query = "UPDATE fields.field " * "SET class_group_id = \$1, GRH = \$2 " * "WHERE field_id = \$3"
-  execute(conn, query, (id, GRH, x.id))
+  execute(x.connection, query, (id, GRH, x.id))
   return nothing
 end
 
