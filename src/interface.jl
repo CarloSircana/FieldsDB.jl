@@ -1,3 +1,5 @@
+export fields_database, load_fields, insert_field, insert_fields, insert_complete_table
+
 function fields_database()
   return LibPQ.Connection("host=localhost dbname=fields port=5432 user=postgres")
 end
@@ -79,14 +81,20 @@ end
 #
 ################################################################################
 
+function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
+  s = split(x[2:end-1], ",")
+  return [parse(BigInt, split(ss, ".")[1]) for ss in s]
+end
+
 function Oscar.defining_polynomial(x::DBField)
   if isdefined(x, :polynomial)
     return x.poly
   end
   query = "SELECT polynomial FROM fields.field WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [data])
+  result = execute(x.connection, query, [data], column_types = Dict(:polynomial => Vector{BigInt}))
   data = columntable(result)[1][1]
+  @show data
   coeffs = Vector{fmpz}(undef, length(data))
   for i = 1:length(coeffs)
     coeffs[i] = fmpz(BigInt(data[i]))
@@ -133,7 +141,7 @@ function Oscar.discriminant(x::DBField)
   end
   query = "SELECT discriminant FROM fields.field WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [data], column_types = Dict(:discriminant => BigInt))
   x.discriminant = fmpz(BigInt(columntable(result)[1][1]))
   return x.discriminant
 end
@@ -143,14 +151,14 @@ function ramified_primes(x::DBField)
     return x.ramified_primes
   end
   query = "SELECT ramified_primes FROM fields.field WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [x.id], column_types = Dict(:ramified_primes => Vector{BigInt}))
   tb = columntable(result)[1][1]
   if tb === missing
     return missing
   end
   res = Vector{fmpz}(undef, length(tb))
   for i = 1:length(tb)
-    res[i] = fmpz(BigInt(tb[i]))
+    res[i] = fmpz(tb[i])
   end
   x.ramified_primes = res
   return res
@@ -168,11 +176,11 @@ function Oscar.class_group(x::DBField)
     return missing
   end
   query1 = "SELECT structure FROM fields.class_group WHERE class_group_id = \$1"
-  result1 = execute(x.connection, query1, [tb])
+  result1 = execute(x.connection, query1, [tb], column_types = Dict(:structure => Vector{BigInt}))
   str = columntable(result)[1][1]
   invs = Vector{fmpz}(undef, length(str))
   for i = 1:length(invs)
-    invs[i] = fmpz(BigInt(str[i]))
+    invs[i] = fmpz(str[i])
   end
   x.class_group = abelian_group(invs)
   return x.class_group
@@ -183,7 +191,7 @@ function Oscar.regulator(x::DBField)
     return x.regulator
   end
   query = "SELECT regulator " * "FROM fields.field" * " WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => BigFloat))
   data = columntable(result)[1][1]
   if data === missing
     return missing
@@ -709,7 +717,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
 end
 
 
-function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Connection; check::Bool = true, galois_group::PermGroup = symmetric_group(1))
+function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = true, galois_group = symmetric_group(1))
   if order(galois_group) > 1
     g_id = _find_group_id(connection, galois_group)
     if g_id === missing
@@ -728,7 +736,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
     pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
     if check
-      lf = load_fields(connection, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
+      lf = load_fields(conn, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
       if !isempty(lf)
         found = false
         for x in lf
@@ -751,7 +759,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
         degree = [deg],
         group_id = [g_id]
         ),
-        connection,
+        conn,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -767,7 +775,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
         discriminant = [BigInt(d)], 
         degree = [deg]
         ),
-        connection,
+        conn,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -1019,7 +1027,6 @@ function set_canonical_defining_polynomial(x::DBField)
   set_polynomial(x, defining_polynomial(K1), is_canonical = true)
 end
 
-
 function set_ramified_primes(x::DBField)
   d = discriminant(x)
   rp = collect(keys(factor(d).fac))
@@ -1261,4 +1268,23 @@ function isomorphism_class_representatives(v::Vector{AnticNumberField})
   end
   return res
 end
+
+################################################################################
+#
+#  To populate the database
+#
+################################################################################
+
+function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
+
+  query = "SELECT field_id FROM fields.field WHERE class_group_id = \$1 LIMIT 20"
+  result = rows(execute(connection, query, [missing]))
+  res = Vector{DBField}(undef, 20)
+  ind = 1
+  for x in result
+    res[i] = DBField(connection, x[1])
+  end
+  return res  
+end
+
 
