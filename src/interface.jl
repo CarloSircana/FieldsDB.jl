@@ -94,7 +94,6 @@ function Oscar.defining_polynomial(x::DBField)
   data = x.id
   result = execute(x.connection, query, [data], column_types = Dict(:polynomial => Vector{BigInt}))
   data = columntable(result)[1][1]
-  @show data
   coeffs = Vector{fmpz}(undef, length(data))
   for i = 1:length(coeffs)
     coeffs[i] = fmpz(BigInt(data[i]))
@@ -369,8 +368,8 @@ end
 #
 ################################################################################
 
-function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0, -1), discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
-                         signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[-1], ramified_at::Vector{fmpz} = fmpz[-1],
+function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0, -1), discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
+                         signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
                          galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
                          class_group_structure::Vector{fmpz} = fmpz[-1], 
                          class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}(), only_count::Type{Val{T}} = Val{false}) where T
@@ -408,18 +407,18 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
     push!(values, signature[1])
     ind += 1
   end
-  if unramified_outside[1] != -1
+  if !isempty(unramified_outside)
     push!(parameters, "ramified_primes <@ \$$(ind)")
     push!(values, [BigInt(x) for x in unramified_outside])
     ind += 1
   end
-  if ramified_at[1] != -1
+  if !isempty(ramified_at)
     push!(parameters, "ramified_primes @> \$$(ind)")
     push!(values, [BigInt(x) for x in ramified_at])
     ind += 1
   end
   if !isone(order(galois_group))
-    id_group = _find_group_id(conn, galois_group)
+    id_group = _find_group_id(connection, galois_group)
     if id_group === missing
       return DBField[]
     end
@@ -428,7 +427,7 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
     ind += 1
   end
   if class_group_structure[1] != -1
-    id_class_group = _find_class_group_id(conn, abelian_group(class_group_structure))
+    id_class_group = _find_class_group_id(connection, abelian_group(class_group_structure))
     if id_class_group !== missing
       push!(parameters, "class_group_id = \$$(ind)")
       push!(values, id_class_group)
@@ -439,7 +438,7 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
     abgroups = abelian_groups(class_number)
     class_group_ids = Vector{Int}()
     for C in abgroups
-      idC = _find_class_group_id(conn, C)
+      idC = _find_class_group_id(connection, C)
       if idC !== missing
         push!(class_group_ids, idC)
       end
@@ -452,7 +451,7 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
     ind += 1
   end
   if !isempty(class_group_ranks_range)
-    ids_class_group = _find_class_group_ids(conn, class_group_ranks_range)
+    ids_class_group = _find_class_group_ids(connection, class_group_ranks_range)
     push!(parameters, "class_group_id = ANY( \$$(ind)) ")
     push!(values, ids_class_group)
     ind += 1
@@ -461,7 +460,7 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
     #I want to print the completeness data.
     if order(galois_group) != 1
       if signature[1] != -1
-        res = find_completeness_data(conn, galois_group, signature)
+        res = find_completeness_data(connection, galois_group, signature)
         if res === missing
           println("The data might not be complete, even assuming GRH")
         end
@@ -472,13 +471,13 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
         end
       else
         ps = possible_signatures(galois_group)
-        res = find_completeness_data(conn, galois_group, ps[1])
+        res = find_completeness_data(connection, galois_group, ps[1])
         if res === missing
           println("The data might not be complete, even assuming GRH")
         else
           ismissing = false
           for i = 2:length(ps)
-            resi = find_completeness_data(conn, galois_group, ps[i])
+            resi = find_completeness_data(connection, galois_group, ps[i])
             if resi === missing
               ismissing = true
               break
@@ -511,26 +510,26 @@ function load_fields(conn::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0,
     end
     query =  query * parameters[end]
   end
-  result = execute(conn, query, values)
+  result = execute(connection, query, values)
   data = columntable(result)[1]
   if only_count == Val{true}
     return data[1]
   end
   fields = Vector{DBField}(undef, length(data))
   for j = 1:length(fields)
-    fields[j] = DBField(conn, data[j])
+    fields[j] = DBField(connection, data[j])
   end
   return fields
 end
 
-function _find_group_id(conn::LibPQ.Connection, G::PermGroup)
+function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
   d = degree(G)
   id = transitive_group_identification(G)
   if id != -1
     #GREAT! Unique identification.
     query = "SELECT group_id FROM fields.group WHERE degree = \$1 AND transitive_group_id = \$2"
     values = Int[d, id]
-    result = execute(conn, query, values)
+    result = execute(connection, query, values)
     data = columntable(result)[1][1]
     return data
   end
@@ -541,14 +540,14 @@ function _find_group_id(conn::LibPQ.Connection, G::PermGroup)
     id = small_group_identification(G)
     query = "SELECT group_id FROM fields.group WHERE degree = \$1 AND group_order = \$2 AND small_group_id = \$3"
     values = [d, order, id[2]]
-    result = execute(conn, query, values)
+    result = execute(connection, query, values)
     data = columntable(result)[1][1]
     return data
   end
   #Sad. That's quite hard now. I have to search for all the groups
   #with a given order and check isomorphism.
   query = "SELECT group_id, generators FROM fields.group WHERE degree = \$1 AND group_order = \$2"
-  result = execute(conn, query, [d, o])
+  result = execute(connection, query, [d, o])
   data = Tables.rows(result)
   ind = 0
   S = symmetric_group(deg)
@@ -563,24 +562,24 @@ function _find_group_id(conn::LibPQ.Connection, G::PermGroup)
   return missing
 end
 
-function _find_class_group_id(conn::LibPQ.Connection, C::GrpAbFinGen)
+function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
   if isone(order(C))
     query = "SELECT class_group_id FROM fields.class_group WHERE group_order = \$1"
-    result = execute(conn, query, [1])
+    result = execute(connection, query, [1])
     return columntable(result)[1][1]
   end
   invs = snf(C)[1].snf
   query = "SELECT class_group_id FROM fields.class_group WHERE structure = \$1"
-  result = execute(conn, query, [invs])
+  result = execute(connection, query, [invs])
   return columntable(result)[1][1]
 end
 
-function _find_class_group_ids(conn::LibPQ.Connection, ranks::Dict{fmpz, Tuple{Int, Int}})
+function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, Tuple{Int, Int}})
   #I want to find the class group ids of the class group having the rank as required.
   divs = [BigInt(x) for x in keys(ranks)]
   sort!(divs)
   query = "SELECT class_group_id, prime_divisors, ranks FROM fields.class_group WHERE prime_divisors @> \$1"
-  result = execute(conn, query, [divs])
+  result = execute(connection, query, [divs])
   data = Tables.rows(result)
   #I assume that the divisors are ordered.
   ids = Vector{Int}()
@@ -607,11 +606,13 @@ function _find_class_group_ids(conn::LibPQ.Connection, ranks::Dict{fmpz, Tuple{I
   return ids
 end
 
-function find_completeness_data(conn::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
-  idG = _find_group_id(conn, G)
-  @assert idG !== missing
+function find_completeness_data(connection::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
+  idG = _find_group_id(connection, G)
+  if idG === missing
+    return missing
+  end
   query = "SELECT GRH, discriminant_bound FROM fields.completeness WHERE group_id = \$1 AND real_embeddings = \$2"
-  result = execute(conn, query, [idG, signature[1]])
+  result = execute(connection, query, [idG, signature[1]])
   data = Tables.rows(result)
   if isempty(data)
     return missing
@@ -625,13 +626,19 @@ function find_completeness_data(conn::LibPQ.Connection, G::PermGroup, signature:
       res[2] = fmpz(BigInt(x[2]))
     end
   end
+  if !isassigned(res, 1)
+    res[1] = fmpz()
+  end
+  if !isassigned(res, 2)
+    res[2] = fmpz()
+  end
   return res
 end
 
-function find_DBfield(conn::LibPQ.Connection, K::AnticNumberField)
+function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField)
   d = degree(K)
   disc = discriminant(maximal_order(K))
-  lf = load_fields(conn, degree_range = (d, d), discriminant_range = (disc, disc), signature = signature(K))
+  lf = load_fields(connection, degree_range = (d, d), discriminant_range = (disc, disc), signature = signature(K))
   if isempty(lf)
     return missing
   end
@@ -659,7 +666,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
   #If H is the subgroup fixing K, the number of automorphisms is equal to
   #the order normalizer of H divided by the order of H
   aut_order = Int(find_automorphisms_order(galois_group))
-  execute(conn, "BEGIN;")
+  execute(connection, "BEGIN;")
   real_embs = signature[1]
   have_signature = (real_embs != -1)
   for K in fields
@@ -704,7 +711,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
       ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6);",
     )
   end
-  execute(conn, "COMMIT;")
+  execute(connection, "COMMIT;")
   #Finally, we save the completeness data
   if have_signature
     insert_completeness_data(connection, galois_group, signature, discriminant_bound, GRH)
@@ -717,7 +724,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
 end
 
 
-function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = true, galois_group = symmetric_group(1))
+function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Connection; check::Bool = true, galois_group = symmetric_group(1))
   if order(galois_group) > 1
     g_id = _find_group_id(connection, galois_group)
     if g_id === missing
@@ -728,7 +735,7 @@ function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = tru
     g_id = 0
   end
   
-  execute(conn, "BEGIN;")
+  execute(connection, "BEGIN;")
   for K in fields
     @assert isdefining_polynomial_nice(K)
     d = discriminant(maximal_order(K))
@@ -736,7 +743,7 @@ function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = tru
     pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
     if check
-      lf = load_fields(conn, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
+      lf = load_fields(connection, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
       if !isempty(lf)
         found = false
         for x in lf
@@ -759,7 +766,7 @@ function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = tru
         degree = [deg],
         group_id = [g_id]
         ),
-        conn,
+        connection,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -775,7 +782,7 @@ function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = tru
         discriminant = [BigInt(d)], 
         degree = [deg]
         ),
-        conn,
+        connection,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -785,7 +792,7 @@ function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = tru
       )
     end
   end
-  execute(conn, "COMMIT;")
+  execute(connection, "COMMIT;")
   return nothing
 end
 
@@ -793,7 +800,7 @@ function insert_field(K::AnticNumberField, connection::LibPQ.Connection; check::
   return insert_fields(AnticNumberField[K], connection, check = check)
 end
 
-function insert_class_group(conn::LibPQ.Connection, C::GrpAbFinGen)
+function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   o = BigInt(order(C))
   str = map(BigInt, snf(C)[1].snf)
   lf = factor(str[end])
@@ -816,7 +823,7 @@ function insert_class_group(conn::LibPQ.Connection, C::GrpAbFinGen)
     prime_divisors = [divs],
     ranks = [ranks], 
     ),
-    conn,
+    connection,
     "INSERT INTO fields.class_group (
       group_order, 
       structure,
@@ -827,7 +834,7 @@ function insert_class_group(conn::LibPQ.Connection, C::GrpAbFinGen)
   return nothing
 end
 
-function insert_group(conn::LibPQ.Connection, G::PermGroup)
+function insert_group(connection::LibPQ.Connection, G::PermGroup)
   o = order(G)
   isab = isabelian(G)
   issolv = issolvable(G)
@@ -849,7 +856,7 @@ function insert_group(conn::LibPQ.Connection, G::PermGroup)
       perfect = [isperf],
       primitive = [isprim]
       ),
-      conn,
+      connection,
       "INSERT INTO fields.group (
         group_order, 
         degree,
@@ -877,7 +884,7 @@ function insert_group(conn::LibPQ.Connection, G::PermGroup)
       perfect = [isperf],
       primitive = [isprim]
       ),
-      conn,
+      connection,
       "INSERT INTO fields.group (
         group_order, 
         degree,
@@ -912,7 +919,7 @@ function insert_group(conn::LibPQ.Connection, G::PermGroup)
     perfect = [isperf],
     primitive = [isprim]
     ),
-    conn,
+    connection,
     "INSERT INTO fields.group (
       group_order, 
       degree,
@@ -928,16 +935,32 @@ function insert_group(conn::LibPQ.Connection, G::PermGroup)
   return nothing
 end
 
-function insert_completeness_data(conn::LibPQ.Connection, group::PermGroup, signature::Tuple{Int, Int}, discriminant_bound::fmpz, GRH::Bool)
-  gid = _find_group_id(conn, group)
+function insert_completeness_data(connection::LibPQ.Connection, group::PermGroup, signature::Tuple{Int, Int}, discriminant_bound::fmpz, GRH::Bool)
+  cd = find_completeness_data(connection, group, signature)
+  if cd !== missing
+    if GRH
+      if cd[1] > discriminant_bound
+        return nothing
+      end
+    else
+      if cd[2] > discriminant_bound
+        return nothing
+      end
+    end
+    gid = _find_group_id(connection, group)
+    query = "UPDATE fields.completeness SET discriminant_bound = \$1 WHERE GRH = \$2 AND group_id = \$3 AND real_embeddings = \$4"
+    execute(connection, query, [BigInt(discriminant_bound), GRH, gid, signature[1]])
+    return nothing
+  end
+  gid = _find_group_id(connection, group)
   @assert gid !== missing
   LibPQ.load!(
     (group_id = [gid], 
     GRH = [GRH],
-    real_embeddings = [s],
-    discriminant_bound = BigInt(discriminant_bound)
+    real_embeddings = [signature[1]],
+    discriminant_bound = [BigInt(discriminant_bound)]
     ),
-    conn,
+    connection,
     "INSERT INTO fields.completeness (
       group_id, 
       GRH,
@@ -956,7 +979,7 @@ end
 
 function set_polynomial(x::DBField, f::fmpq_poly; is_canonical::Bool = false)
   query = "UPDATE fields.field SET polynomial = \$1, is_canonical_poly = \$2 WHERE field_id = \$3"
-  pol = BigInt[BigInt(coeff(f, i)) for i = 0:degree(f)]
+  pol = BigInt[BigInt(numerator(coeff(f, i))) for i = 0:degree(f)]
   execute(x.connection, query, (pol, is_canonical, x.id))
   return nothing
 end
@@ -1040,7 +1063,7 @@ end
 
 function set_torsion_unit_size(x::DBField)
   K = number_field(x)
-  set_torsion_size(x, torsion_units_order(K))
+  set_torsion_size(x, Hecke.torsion_units_order(K))
 end
 
 function set_iscm(x::DBField)
@@ -1060,7 +1083,7 @@ function set_regulator(x::DBField)
 end
 
 function set_galois_group(x::DBField)
-  G = galois_group(number_field(x))
+  G = galois_group(number_field(x))[1]
   set_galois_group(x, G)
 end
 
@@ -1069,7 +1092,7 @@ function set_subfields(x::DBField)
   ids = Vector{BigInt}(undef, length(lS))
   for i = 1:length(lS)
     insert_field(lS[i], x.connection, check = true)
-    y = find_DBfield(lS[i])
+    y = find_DBfield(x.connection, lS[i])
     ids[i] = y.id
   end
   query = "UPDATE fields.field SET subfields = \$1 WHERE field_id = \$2"
@@ -1183,9 +1206,9 @@ function _pdtype_shape(OK::NfOrd, p::Int)
   res = Dict{Tuple{Int, Int}, Int}()
   for x in pd
     if haskey(res, x)
-      res += 1
+      res[x] += 1
     else
-      res = 1
+      res[x] = 1
     end
   end
   return res
@@ -1277,12 +1300,13 @@ end
 
 function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
 
-  query = "SELECT field_id FROM fields.field WHERE class_group_id = \$1 LIMIT 20"
-  result = rows(execute(connection, query, [missing]))
+  query = "SELECT field_id FROM fields.field WHERE class_group_id IS NULL LIMIT 20"
+  result = Tables.rows(execute(connection, query, []))
   res = Vector{DBField}(undef, 20)
   ind = 1
   for x in result
-    res[i] = DBField(connection, x[1])
+    res[ind] = DBField(connection, x[1])
+    ind += 1
   end
   return res  
 end
