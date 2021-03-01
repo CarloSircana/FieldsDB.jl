@@ -1,3 +1,5 @@
+export fields_database, load_fields, insert_field, insert_fields, insert_complete_table
+
 function fields_database()
   return LibPQ.Connection("host=localhost dbname=fields port=5432 user=postgres")
 end
@@ -149,14 +151,14 @@ function ramified_primes(x::DBField)
     return x.ramified_primes
   end
   query = "SELECT ramified_primes FROM fields.field WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [x.id], column_types = Dict(:ramified_primes => Vector{BigInt}))
   tb = columntable(result)[1][1]
   if tb === missing
     return missing
   end
   res = Vector{fmpz}(undef, length(tb))
   for i = 1:length(tb)
-    res[i] = fmpz(BigInt(tb[i]))
+    res[i] = fmpz(tb[i])
   end
   x.ramified_primes = res
   return res
@@ -174,11 +176,11 @@ function Oscar.class_group(x::DBField)
     return missing
   end
   query1 = "SELECT structure FROM fields.class_group WHERE class_group_id = \$1"
-  result1 = execute(x.connection, query1, [tb])
+  result1 = execute(x.connection, query1, [tb], column_types = Dict(:structure => Vector{BigInt}))
   str = columntable(result)[1][1]
   invs = Vector{fmpz}(undef, length(str))
   for i = 1:length(invs)
-    invs[i] = fmpz(BigInt(str[i]))
+    invs[i] = fmpz(str[i])
   end
   x.class_group = abelian_group(invs)
   return x.class_group
@@ -189,7 +191,7 @@ function Oscar.regulator(x::DBField)
     return x.regulator
   end
   query = "SELECT regulator " * "FROM fields.field" * " WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => BigFloat))
   data = columntable(result)[1][1]
   if data === missing
     return missing
@@ -1025,7 +1027,6 @@ function set_canonical_defining_polynomial(x::DBField)
   set_polynomial(x, defining_polynomial(K1), is_canonical = true)
 end
 
-
 function set_ramified_primes(x::DBField)
   d = discriminant(x)
   rp = collect(keys(factor(d).fac))
@@ -1267,4 +1268,23 @@ function isomorphism_class_representatives(v::Vector{AnticNumberField})
   end
   return res
 end
+
+################################################################################
+#
+#  To populate the database
+#
+################################################################################
+
+function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
+
+  query = "SELECT field_id FROM fields.field WHERE class_group_id = \$1 LIMIT 20"
+  result = rows(execute(connection, query, [missing]))
+  res = Vector{DBField}(undef, 20)
+  ind = 1
+  for x in result
+    res[i] = DBField(connection, x[1])
+  end
+  return res  
+end
+
 
