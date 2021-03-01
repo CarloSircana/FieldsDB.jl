@@ -79,14 +79,20 @@ end
 #
 ################################################################################
 
+function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
+  s = split(x[2:end-1], ",")
+  return [parse(BigInt, split(ss, ".")[1]) for ss in s]
+end
+
 function Oscar.defining_polynomial(x::DBField)
   if isdefined(x, :polynomial)
     return x.poly
   end
   query = "SELECT polynomial FROM fields.field WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [data])
+  result = execute(x.connection, query, [data], column_types = Dict(:polynomial => Vector{BigInt}))
   data = columntable(result)[1][1]
+  @show data
   coeffs = Vector{fmpz}(undef, length(data))
   for i = 1:length(coeffs)
     coeffs[i] = fmpz(BigInt(data[i]))
@@ -133,7 +139,7 @@ function Oscar.discriminant(x::DBField)
   end
   query = "SELECT discriminant FROM fields.field WHERE field_id = \$1"
   data = x.id
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [data], column_types = Dict(:discriminant => BigInt))
   x.discriminant = fmpz(BigInt(columntable(result)[1][1]))
   return x.discriminant
 end
@@ -709,7 +715,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
 end
 
 
-function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Connection; check::Bool = true, galois_group::PermGroup = symmetric_group(1))
+function insert_fields(fields::Vector{AnticNumberField}, conn; check::Bool = true, galois_group = symmetric_group(1))
   if order(galois_group) > 1
     g_id = _find_group_id(connection, galois_group)
     if g_id === missing
@@ -728,7 +734,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
     pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
     if check
-      lf = load_fields(connection, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
+      lf = load_fields(conn, degree_range = (degree(K), degree(K)), discriminant_range = (d, d), signature = signature(K))
       if !isempty(lf)
         found = false
         for x in lf
@@ -751,7 +757,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
         degree = [deg],
         group_id = [g_id]
         ),
-        connection,
+        conn,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
@@ -767,7 +773,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
         discriminant = [BigInt(d)], 
         degree = [deg]
         ),
-        connection,
+        conn,
         "INSERT INTO fields.field (
           real_embeddings, 
           polynomial,
