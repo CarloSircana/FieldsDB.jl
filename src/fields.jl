@@ -6,7 +6,7 @@ end
 
 function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only_real::Bool = false, unramified_outside::Vector{fmpz} = fmpz[])
   G = GAP.Globals.SmallGroup(a, b)
-  GP = isomorphic_perm_group(PcGroup(G))[1]
+  GP = isomorphic_transitive_perm_group(PcGroup(G), a)
   if only_real
     ps = Tuple{Int, Int}[(a, 0)]
   else
