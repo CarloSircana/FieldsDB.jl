@@ -8,7 +8,8 @@ env:
   PGDATABASE: postgres
   PGUSER: postgres
   PGPASSWORD: root
-test:
+jobs:
+  test:
     name: Julia ${{ matrix.version }} - PostgreSQL ${{ matrix.postgresql-version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
