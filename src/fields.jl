@@ -53,7 +53,7 @@ function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only
     end
     return fcs
   end
-  must_be_ram_surely, must_be_ram_maybe = Hecke.must_be_ramified(L, length(L)-1)
+  must_be_ram_surely, must_be_ram_maybe = Oscar.Hecke.must_be_ramified(L, length(L)-1)
   lvl = Hecke._real_level(L)
   G1 = GAP.Globals.FactorGroup(L[1], L[end-1])
   IdGroupGAP = GAP.Globals.IdGroup(G1)
