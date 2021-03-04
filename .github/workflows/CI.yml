@@ -1,3 +1,12 @@
+name: CI
+# Run on master, tags, or any pull request
+on:
+  branches: [master]
+  pull_request:
+env:
+  PGDATABASE: postgres
+  PGUSER: postgres
+  PGPASSWORD: root
 test:
     name: Julia ${{ matrix.version }} - PostgreSQL ${{ matrix.postgresql-version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
