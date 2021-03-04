@@ -1,6 +1,6 @@
 module FieldsDB
 
-  import Oscar
+  import Oscar, Pkg
   export Oscar
   using LibPQ, Tables
   
