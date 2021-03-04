@@ -1,8 +1,8 @@
 module FieldsDB
 
-
-  export Hecke, Oscar
-  using LibPQ, Tables, Oscar
+  import Oscar
+  export Oscar
+  using LibPQ, Tables
   
   exclude = Symbol[:DirectProductOfElem, :coset_decomposition, :disc_log,
   :generator, :isdihedral_group, :visual, :weight  ]

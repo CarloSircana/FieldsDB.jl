@@ -3,7 +3,7 @@
   #Now, we can test everything.
   FieldsDB.fields(8, 4, db, fmpz(10)^12)
   flds = load_fields(db)
-  @test length(lf) == 138
+  @test length(flds) == 138
   for i = 1:length(flds)
     FieldsDB.set_ramified_primes(flds[i])
     FieldsDB.set_class_group(flds[i])
@@ -22,7 +22,7 @@
   @test load_fields(db, signature = (8, 0), class_group_ranks_range = Dict(fmpz(2) => (2, 2)), only_count = Val{true}) == 0
   @test load_fields(db, signature = (0, 4), class_group_ranks_range = Dict(fmpz(2) => (1, 2)), only_count = Val{true}) == 1
   GP = FieldsDB.isomorphic_transitive_perm_group(small_group(4, 2), 4)
-  @test load_fields(db, galois_group = GP, only_count = Val{true}) = 136
+  @test load_fields(db, galois_group = GP, only_count = Val{true}) == 136
 end
   
 

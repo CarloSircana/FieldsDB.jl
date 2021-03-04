@@ -1,4 +1,4 @@
-CREATE TABLE fields.class_group(
+CREATE TABLE class_group(
   class_group_id SERIAL,
   group_order NUMERIC NOT NULL,
   structure NUMERIC[] NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE fields.class_group(
   PRIMARY KEY(class_group_id)
 );
 
-CREATE TABLE fields.group(
+CREATE TABLE galois_group(
   group_id SERIAL PRIMARY KEY,
   group_order NUMERIC NOT NULL, 
   degree INT NOT NULL, 
@@ -22,26 +22,26 @@ CREATE TABLE fields.group(
   issimple BOOLEAN NOT NULL
 );
 
-CREATE TABLE fields.completeness(
+CREATE TABLE completeness(
   GRH BOOLEAN NOT NULL,
-  group_id INT REFERENCES fields.group(group_id) NOT NULL,
+  group_id INT REFERENCES galois_group(group_id) NOT NULL,
   real_embeddings SMALLINT NOT NULL,
   discriminant_bound NUMERIC NOT NULL, 
   PRIMARY KEY (GRH, group_id, real_embeddings)
 );
 
 
-CREATE TABLE fields.field(
+CREATE TABLE field(
   field_id BIGSERIAL PRIMARY KEY,
   polynomial NUMERIC[] UNIQUE NOT NULL,
   degree SMALLINT NOT NULL,
   real_embeddings SMALLINT NOT NULL,
-  class_group_id INT REFERENCES fields.class_group(class_group_id),
+  class_group_id INT REFERENCES class_group(class_group_id),
   ramified_primes NUMERIC[],
   regulator NUMERIC,
   discriminant NUMERIC NOT NULL,
   GRH BOOLEAN,
-  group_id INT REFERENCES fields.group(group_id),
+  group_id INT REFERENCES galois_group(group_id),
   CM BOOLEAN, 
   torsion_size INT, 
   automorphisms_order SMALLINT,
