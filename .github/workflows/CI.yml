@@ -1,24 +1,4 @@
-# This is a basic workflow to help you get started with Actions
-
-name: CI
-
-# Controls when the action will run. 
-on:
-  # Triggers the workflow on push or pull request events but only for the master branch
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-
-env:
-  PGDATABASE: postgres
-  PGUSER: postgres
-  PGPASSWORD: root
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
-jobs:
-  # This workflow contains a single job called "build"
-  test:
+test:
     name: Julia ${{ matrix.version }} - PostgreSQL ${{ matrix.postgresql-version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -30,33 +10,111 @@ jobs:
           - latest
         os:
           - ubuntu-latest
-    # Steps represent a sequence of tasks that will be executed as part of the job
+          - macOS-latest
+          - windows-latest
+        arch:
+          - x64
+          - x86
+        exclude:
+          # Don't test 32-bit on macOS
+          - os: macOS-latest
+            arch: x86
+        include:
+          # Add a 1.0 job just to make sure we still support it
+          - os: ubuntu-latest
+            version: "1.0"
+            arch: x64
+            postgresql-version: latest
+          # Add a 1.5 job because that's what Invenia actually uses
+          - os: ubuntu-latest
+            version: 1.5
+            arch: x64
+            postgresql-version: latest
+          # Add older supported PostgreSQL Versions
+          - os: ubuntu-latest
+            version: 1
+            arch: x64
+            postgresql-version: '12'
+          - os: ubuntu-latest
+            version: 1
+            arch: x64
+            postgresql-version: '11'
+          - os: ubuntu-latest
+            version: 1
+            arch: x64
+            postgresql-version: '10'
+          - os: ubuntu-latest
+            version: 1
+            arch: x64
+            postgresql-version: '9.6'
+          - os: ubuntu-latest
+            version: 1
+            arch: x64
+            postgresql-version: '9.5'
     steps:
-    - uses: julia-actions/setup-julia@v1
-       with:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-    - uses: actions/cache@v2
-      env:
-        cache-name: cache-artifacts
-      with:
-        path: ~/.julia/artifacts
-        key: ${{ runner.os }}-${{ matrix.arch }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ matrix.arch }}-test-${{ env.cache-name }}-
-          ${{ runner.os }}-${{ matrix.arch }}-test-
-          ${{ runner.os }}-${{ matrix.arch }}-
-          ${{ runner.os }}-
-    # Linux
-    - name: Install PostgreSQL
-      uses: harmon758/postgresql-action@v1
-      with:
-        postgresql version: ${{ matrix.postgresql-version }}
-        postgresql user: ${{ env.PGUSER }}
-        postgresql password: ${{ env.PGPASSWORD }}
-    - name: Set PGHOST on Linux
+      - uses: actions/cache@v2
+        env:
+          cache-name: cache-artifacts
+        with:
+          path: ~/.julia/artifacts
+          key: ${{ runner.os }}-${{ matrix.arch }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-test-${{ env.cache-name }}-
+            ${{ runner.os }}-${{ matrix.arch }}-test-
+            ${{ runner.os }}-${{ matrix.arch }}-
+            ${{ runner.os }}-
+      # Linux
+      - name: Install PostgreSQL
+        uses: harmon758/postgresql-action@v1
+        if: ${{ runner.os == 'Linux' }}
+        with:
+          postgresql version: ${{ matrix.postgresql-version }}
+          postgresql user: ${{ env.PGUSER }}
+          postgresql password: ${{ env.PGPASSWORD }}
+      - name: Wait / Sleep
+        uses: jakejarvis/wait-action@v0.1.0
+        if: ${{ runner.os == 'Linux' }}
+        with:
+          time: '1m'
+      - name: Collect Docker Logs
+        uses: jwalton/gh-docker-logs@v1.0.0
+        if: ${{ runner.os == 'Linux' }}
+      - name: Check running containers
+        run: docker ps -a
+        if: ${{ runner.os == 'Linux' }}
+      - name: Set PGHOST on Linux
         run: echo "PGHOST=localhost" >> $GITHUB_ENV
-      # Runs a single command using the runners shell
+        if: ${{ runner.os == 'Linux' }}
+      # MacOS
+      - name: Set PGUSER on macOS
+        run: |
+          echo "PGUSER=$USER" >> $GITHUB_ENV
+          echo "LIBPQJL_DATABASE_USER=$USER" >> $GITHUB_ENV
+        if: ${{ runner.os == 'macOS' }}
+      - name: Start Homebrew PostgreSQL service
+        run: pg_ctl -D /usr/local/var/postgres start
+        if: ${{ runner.os == 'macOS' }}
+      # Windows
+      - name: Add PostgreSQL to Path
+        run: |
+          echo $env:PGBIN
+          echo $env:PGBIN | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        if: ${{ runner.os == 'Windows' }}
+      - name: Start Windows PostgreSQL service
+        run: |
+          pg_ctl -D $env:PGDATA start
+          pg_ctl -D $env:PGDATA status
+        if: ${{ runner.os == 'Windows' }}
+      # Run Tests
       - run: psql -c '\conninfo'
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v1
+        with:
+          file: lcov.info
