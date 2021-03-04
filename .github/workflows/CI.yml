@@ -10,8 +10,10 @@ on:
   pull_request:
     branches: [ master ]
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+env:
+  PGDATABASE: postgres
+  PGUSER: postgres
+  PGPASSWORD: root
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -22,9 +24,45 @@ jobs:
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-
+    - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: ${{ matrix.version }}
+          arch: ${{ matrix.arch }}
+      - uses: actions/cache@v2
+        env:
+          cache-name: cache-artifacts
+        with:
+          path: ~/.julia/artifacts
+          key: ${{ runner.os }}-${{ matrix.arch }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-test-${{ env.cache-name }}-
+            ${{ runner.os }}-${{ matrix.arch }}-test-
+            ${{ runner.os }}-${{ matrix.arch }}-
+            ${{ runner.os }}-
+      # Linux
+      - name: Install PostgreSQL
+        uses: harmon758/postgresql-action@v1
+        if: ${{ runner.os == 'Linux' }}
+        with:
+          postgresql version: ${{ matrix.postgresql-version }}
+          postgresql user: ${{ env.PGUSER }}
+          postgresql password: ${{ env.PGPASSWORD }}
+      - name: Wait / Sleep
+        uses: jakejarvis/wait-action@v0.1.0
+        if: ${{ runner.os == 'Linux' }}
+        with:
+          time: '1m'
+      - name: Collect Docker Logs
+        uses: jwalton/gh-docker-logs@v1.0.0
+        if: ${{ runner.os == 'Linux' }}
+      - name: Check running containers
+        run: docker ps -a
+        if: ${{ runner.os == 'Linux' }}
+      - name: Set PGHOST on Linux
+        run: echo "PGHOST=localhost" >> $GITHUB_ENV
+        if: ${{ runner.os == 'Linux' }}
       # Runs a single command using the runners shell
-      - name: Tests
-        uses: julia-actions/julia-runtest@latest
+      - run: psql -c '\conninfo'
+      - uses: julia-actions/julia-buildpkg@latest
+      - uses: julia-actions/julia-runtest@latest
