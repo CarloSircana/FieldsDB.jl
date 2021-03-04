@@ -1,8 +1,9 @@
 name: CI
 # Run on master, tags, or any pull request
 on:
-  branches: [master]
-  pull_request:
+  push:
+    branches: [master]
+    pull_request:
 env:
   PGDATABASE: postgres
   PGUSER: postgres
