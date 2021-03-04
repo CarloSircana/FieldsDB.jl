@@ -3,7 +3,11 @@ using Test
 using LibPQ, Oscar.Hecke
 
 DATABASE_USER = get(ENV, "LIBPQJL_DATABASE_USER", "postgres")
-db = LibPQ.Connection("host=localhost dbname=postgres user=$DATABASE_USER")
+if get(ENV, "CI", "false") == "true"
+  db = LibPQ.Connection("dbname=postgres user=$DATABASE_USER")
+else
+  db = LibPQ.Connection("host=localhost dbname=postgres user=$DATABASE_USER")
+end
 
   #We create temporary tables.
   execute(db, """
