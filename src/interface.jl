@@ -1,4 +1,5 @@
-export fields_database, load_fields, insert_field, insert_fields, insert_complete_table
+export fields_database, load_fields, insert_field, insert_fields, insert_complete_table, 
+       ramified_primes
 
 function fields_database()
   return LibPQ.Connection("host=localhost dbname=fields port=5432 user=postgres")
@@ -49,6 +50,11 @@ mutable struct DBField
   end
 end
 
+function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
+  s = split(x[2:end-1], ",")
+  return [parse(BigInt, split(ss, ".")[1]) for ss in s]
+end
+
 ################################################################################
 #
 #  Hash
@@ -77,14 +83,80 @@ end
 
 ################################################################################
 #
-#  Importing infos from the database
+#  IsSet function
 #
 ################################################################################
 
-function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
-  s = split(x[2:end-1], ",")
-  return [parse(BigInt, split(ss, ".")[1]) for ss in s]
+function areramified_primes_known(x::DBField)
+  query = "SELECT ramified_primes FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id], column_types = Dict(:ramified_primes => Vector{BigInt}))
+  tb = columntable(result)[1][1]
+  return tb !== missing
 end
+
+function isregulator_known(x::DBField)
+  query = "SELECT regulator FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => BigFloat))
+  data = columntable(result)[1][1]
+  return data !== missing
+end
+
+function isclass_group_known(x::DBField)
+  query = "SELECT class_group_id FROM field WHERE field_id = \$1"
+  data = x.id
+  result = execute(x.connection, query, [data])
+  tb = columntable(result)[1][1]
+  return tb !== missing
+end
+
+function isgalois_group_known(x::DBField)
+  query = "SELECT group_id FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  data = columntable(result)[1][1]
+  return data !== missing
+end
+
+function iscm_property_known(x::DBField)
+  query = "SELECT CM FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  data = columntable(result)[1][1]
+  return data !== missing
+end
+
+function isautomorphism_order_known(x::DBField)
+  query = "SELECT automorphisms_order FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  data = columntable(result)[1][1]
+  return data !== missing
+end
+
+function istorsion_unit_size_known(x::DBField)
+  query = "SELECT torsion_size FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  data = columntable(result)[1][1]
+  return data !== missing
+end
+
+function aresubfields_known(x::DBField)
+  query = "SELECT subfields FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  sub = columntable(result)[1]
+  return sub[1] !== missing
+end
+
+function iscanonical_polynomial_known(x::DBField)
+  query = "SELECT is_canonical_poly FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  data = columntable(result)[1][1]
+  return data !== missing 
+end
+
+
+################################################################################
+#
+#  Importing infos from the database
+#
+################################################################################
 
 function Oscar.defining_polynomial(x::DBField)
   if isdefined(x, :polynomial)
@@ -155,8 +227,10 @@ function ramified_primes(x::DBField)
   if tb === missing
     return missing
   end
-  res = Vector{fmpz}(undef, length(tb))
-  for i = 1:length(tb)
+  tb::Vector{BigInt}
+  l = length(tb)::Int
+  res = Vector{fmpz}(undef, l)
+  for i = 1:l
     res[i] = fmpz(tb[i])
   end
   x.ramified_primes = res
@@ -167,7 +241,7 @@ function Oscar.class_group(x::DBField)
   if isdefined(x, :class_group)
     return x.class_group
   end
-  query = "SELECT class_group_id FROM  field WHERE field_id = \$1"
+  query = "SELECT class_group_id FROM field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data])
   tb = columntable(result)[1][1]
@@ -189,7 +263,7 @@ function Oscar.regulator(x::DBField)
   if isdefined(x, :regulator)
     return x.regulator
   end
-  query = "SELECT regulator " * "FROM field" * " WHERE field_id = \$1"
+  query = "SELECT regulator FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => BigFloat))
   data = columntable(result)[1][1]
   if data === missing
@@ -239,7 +313,6 @@ function Oscar.galois_group(x::DBField)
   x.galois_group = H
   return H
 end
-
 
 function is_cm(x::DBField)
   if x.is_cm != 0
@@ -348,13 +421,13 @@ function Oscar.subfields(x::DBField)
   if isdefined(x, :subfields)
     return x.subfields::Vector{DBFields}
   end
-  query = "SELECT subfields " * "FROM field" * " WHERE field_id = \$1"
+  query = "SELECT subfields FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
   sub = columntable(result)[1]
-  if data[1] === missing
+  if sub[1] === missing
     return missing
   end
-  v = data[1]
+  v = sub[1]
   res = Vector{DBFields}(undef, length(v))
   for i = 1:length(v)
     res[i] = DBField(x.connection, v[i])
@@ -1308,5 +1381,6 @@ function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
   end
   return res  
 end
+
 
 
