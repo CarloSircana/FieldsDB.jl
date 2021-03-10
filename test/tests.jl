@@ -35,10 +35,9 @@
     lS2 = FieldsDB.isomorphism_class_representatives(lS1)
     @test length(lS) == length(lS2)
 
-    @test !FieldsDB.isgalois_group_known(flds[i])
     FieldsDB.set_galois_group(flds[i])
     @test FieldsDB.isgalois_group_known(flds[i])
-    g = galois_group(K)
+    g = galois_group(K)[1]
     gK = galois_group(flds[i])
     @test degree(g) == degree(gK)
     @test isisomorphic(g, gK)[1]
@@ -46,27 +45,29 @@
     @test !FieldsDB.iscanonical_polynomial_known(flds[i])
     FieldsDB.set_canonical_defining_polynomial(flds[i])
     @test FieldsDB.iscanonical_polynomial_known(flds[i])
-    K1 = simplify(K, canonical = true)
-    f = defining_polynomial(flds[i])
-    @test f == K1.pol
+    K1 = simplify(K, canonical = true)[1]
+    f = defining_polynomial(flds[i], cached = false)
+    Qx = parent(f)
+    f1 = K1.pol(gen(Qx))
+    @test f == f1
 
-    @test !FieldsDB.isautomorphism_order_known(flds[i])
     FieldsDB.set_automorphisms_order(flds[i])
     @test FieldsDB.isautomorphism_order_known(flds[i])
     auts = automorphisms(K)
     n = FieldsDB.automorphisms_order(flds[i])
+    @test length(auts) == n
 
     @test !FieldsDB.iscm_property_known(flds[i])
     FieldsDB.set_iscm(flds[i])
     @test FieldsDB.iscm_property_known(flds[i])
-    fl = FieldsDB.iscm_field(K)
+    fl = FieldsDB.Hecke.iscm_field(K)[1]
     tf = FieldsDB.is_cm(flds[i])
     @test fl == (tf == 1)
 
     @test !FieldsDB.istorsion_unit_size_known(flds[i])
     FieldsDB.set_torsion_unit_size(flds[i])
     @test FieldsDB.istorsion_unit_size_known(flds[i])
-    n1 = torsion_units_order(K)
+    n1 = FieldsDB.Hecke.torsion_units_order(K)
     n2 = FieldsDB.torsion_units_size(flds[i])
     @test n1 == n2
   end
@@ -110,10 +111,9 @@ end
     lS2 = FieldsDB.isomorphism_class_representatives(lS1)
     @test length(lS) == length(lS2)
 
-    @test !FieldsDB.isgalois_group_known(flds[i])
     FieldsDB.set_galois_group(flds[i])
     @test FieldsDB.isgalois_group_known(flds[i])
-    g = galois_group(K)
+    g = galois_group(K)[1]
     gK = galois_group(flds[i])
     @test degree(g) == degree(gK)
     @test isisomorphic(g, gK)[1]
@@ -121,11 +121,12 @@ end
     @test !FieldsDB.iscanonical_polynomial_known(flds[i])
     FieldsDB.set_canonical_defining_polynomial(flds[i])
     @test FieldsDB.iscanonical_polynomial_known(flds[i])
-    K1 = simplify(K, canonical = true)
-    f = defining_polynomial(flds[i])
-    @test f == K1.pol
+    K1 = simplify(K, canonical = true)[1]
+    f = defining_polynomial(flds[i], cached = false)
+    Qx = parent(f)
+    f1 = K.pol(gen(Qx))
+    @test f == f1
 
-    @test !FieldsDB.isautomorphism_order_known(flds[i])
     FieldsDB.set_automorphisms_order(flds[i])
     @test FieldsDB.isautomorphism_order_known(flds[i])
     auts = automorphisms(K)
@@ -134,14 +135,14 @@ end
     @test !FieldsDB.iscm_property_known(flds[i])
     FieldsDB.set_iscm(flds[i])
     @test FieldsDB.iscm_property_known(flds[i])
-    fl = FieldsDB.iscm_field(K)
+    fl = FieldsDB.Hecke.iscm_field(K)[1]
     tf = FieldsDB.is_cm(flds[i])
     @test fl == (tf == 1)
 
     @test !FieldsDB.istorsion_unit_size_known(flds[i])
     FieldsDB.set_torsion_unit_size(flds[i])
     @test FieldsDB.istorsion_unit_size_known(flds[i])
-    n1 = torsion_units_order(K)
+    n1 = FieldsDB.Hecke.torsion_units_order(K)
     n2 = FieldsDB.torsion_units_size(flds[i])
     @test n1 == n2
   end
@@ -156,10 +157,14 @@ end
   @test load_fields(db, signature = (0, 4), class_group_ranks_range = Dict(fmpz(2) => (1, 2)), only_count = Val{true}) == 1
   GP = FieldsDB.isomorphic_transitive_perm_group(small_group(4, 2), 4)
   @test load_fields(db, galois_group = GP, only_count = Val{true}) == 136
+end
 
+#=
+@testset "Large groups" begin
   G = symmetric_group(34)
   FieldsDB.insert_group(db, G)
-  @test _find_group_id(db, G) !== missing
+  @test FieldsDB._find_group_id(db, G) !== missing
 end
+=#
   
 

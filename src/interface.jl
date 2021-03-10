@@ -158,9 +158,9 @@ end
 #
 ################################################################################
 
-function Oscar.defining_polynomial(x::DBField)
-  if isdefined(x, :polynomial)
-    return x.poly
+function Oscar.defining_polynomial(x::DBField; cached::Bool = true)
+  if cached && isdefined(x, :polynomial)
+    return x.polynomial
   end
   query = "SELECT polynomial FROM field WHERE field_id = \$1"
   data = x.id
@@ -237,8 +237,8 @@ function ramified_primes(x::DBField)
   return res
 end
 
-function Oscar.class_group(x::DBField)
-  if isdefined(x, :class_group)
+function Oscar.class_group(x::DBField; cached::Bool = true)
+  if cached  && isdefined(x, :class_group)
     return x.class_group
   end
   query = "SELECT class_group_id FROM field WHERE field_id = \$1"
@@ -248,9 +248,9 @@ function Oscar.class_group(x::DBField)
   if tb === missing
     return missing
   end
-  query1 = "SELECT structure FROM  class_group WHERE class_group_id = \$1"
+  query1 = "SELECT structure FROM class_group WHERE class_group_id = \$1"
   result1 = execute(x.connection, query1, [tb], column_types = Dict(:structure => Vector{BigInt}))
-  str = columntable(result)[1][1]
+  str = columntable(result1)[1][1]::Vector{BigInt}
   invs = Vector{fmpz}(undef, length(str))
   for i = 1:length(invs)
     invs[i] = fmpz(str[i])
@@ -285,14 +285,14 @@ function Oscar.galois_group(x::DBField)
     return missing
   end
   query1 = "SELECT transitive_group_id FROM galois_group WHERE group_id = \$1"
-  result1 = execute(x.connection, query1, [data])
+  result1 = execute(x.connection, query1, [data], column_types = Dict(:transitive_group_id => Int64))
   data1 = columntable(result1)[1][1]
-  if data1 != missing
+  if data1 !== missing
     x.galois_group = transitive_group(degree(x), data1)
     return x.galois_group
   end
   query2 = "SELECT group_order, small_group_id FROM galois_group WHERE group_id = \$1"
-  result2 = execute(x.connection, query2, [data])
+  result2 = execute(x.connection, query2, [data], column_types = Dict(:group_order => Int64, :small_group_id => Int64))
   data2 = columntable(result2)
   if data2[2][1] !== missing
     #I have a polycyclic group and I want to get a perm group of the right degree.
@@ -428,7 +428,7 @@ function Oscar.subfields(x::DBField)
     return missing
   end
   v = sub[1]
-  res = Vector{DBFields}(undef, length(v))
+  res = Vector{DBField}(undef, length(v))
   for i = 1:length(v)
     res[i] = DBField(x.connection, v[i])
   end
@@ -623,12 +623,12 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
   result = execute(connection, query, [d, o])
   data = Tables.rows(result)
   ind = 0
-  S = symmetric_group(deg)
+  S = symmetric_group(d)
   for r in data
     vects = eval(Meta.parse(r[2]))
     perms = PermGroupElem[S(x) for x in vects]
     H, mH = sub(S, perms)
-    if isisomorphic(H, G)
+    if isisomorphic(G, H)[1]
       return r[1]
     end
   end
@@ -638,13 +638,14 @@ end
 function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
   if isone(order(C))
     query = "SELECT class_group_id FROM class_group WHERE group_order = \$1"
-    result = execute(connection, query, [1])
+    result = execute(connection, query, [1], column_types = Dict(:class_group_id => Int64))
     return columntable(result)[1][1]
   end
-  invs = snf(C)[1].snf
+  invs = map(BigInt, snf(C)[1].snf)
   query = "SELECT class_group_id FROM class_group WHERE structure = \$1"
-  result = execute(connection, query, [invs])
-  return columntable(result)[1][1]
+  result = execute(connection, query, [invs], column_types = Dict(:class_group_id => Int64))
+  res = columntable(result)
+  return res[1][1]
 end
 
 function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, Tuple{Int, Int}})
@@ -942,7 +943,7 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
     )
     return nothing
   end
-  if order < 2000 && order != 1024
+  if o < 2000 && o != 1024
     id = small_group_identification(G)
     LibPQ.load!(
       (group_order = [o], 
@@ -973,11 +974,11 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
   #Bad case. Cache a good set of generators.
   g = gens(G)
   s = "["
-  for i = 1:length(gens)-1
-    vi = Int[g[i][j] for j = 1:degree(G)]
+  for i = 1:length(g)-1
+    vi = Int[g[i](j) for j = 1:degree(G)]
     s = s * "$vi , "
   end
-  vi = Int[g[length(gens)][j] for j = 1:degree(G)]
+  vi = Int[g[length(g)](j) for j = 1:degree(G)]
   s = s * "$vi]"
   LibPQ.load!(
     (group_order = [o], 
@@ -994,7 +995,7 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
     "INSERT INTO galois_group (
       group_order, 
       degree,
-      transitive_group_id,
+      generators,
       abelian, 
       nilpotent, 
       solvable,
@@ -1049,9 +1050,10 @@ end
 ################################################################################
 
 function set_polynomial(x::DBField, f::fmpq_poly; is_canonical::Bool = false)
-  query = "UPDATE field SET polynomial = \$1, is_canonical_poly = \$2 WHERE field_id = \$3"
   pol = BigInt[BigInt(numerator(coeff(f, i))) for i = 0:degree(f)]
+  query = "UPDATE field SET polynomial = \$1, is_canonical_poly = \$2 WHERE field_id = \$3"
   execute(x.connection, query, (pol, is_canonical, x.id))
+  x.polynomial = f
   return nothing
 end
 
@@ -1150,6 +1152,14 @@ function set_class_group(x::DBField, GRH::Bool = true)
 end
 
 function set_regulator(x::DBField)
+  set_regulator(x, regulator(number_field(x)))
+end
+
+function set_class_group_and_regulator(x::DBField, GRH::Bool = true)
+  K = number_field(x)
+  OK = maximal_order(K)
+  C = class_group(OK, GRH = GRH)[1]
+  set_class_group(x, C, GRH = GRH)
   set_regulator(x, regulator(number_field(x)))
 end
 
