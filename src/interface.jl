@@ -2,7 +2,7 @@ export fields_database, load_fields, insert_field, insert_fields, insert_complet
        ramified_primes
 
 function fields_database()
-  return LibPQ.Connection("host=localhost dbname=fields port=5432 user=postgres")
+  return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag")
 end
 
 mutable struct DBField
