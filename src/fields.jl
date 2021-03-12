@@ -7,11 +7,9 @@ end
 function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only_real::Bool = false, unramified_outside::Vector{fmpz} = fmpz[])
   G = GAP.Globals.SmallGroup(a, b)
   GP = isomorphic_transitive_perm_group(PcGroup(G), a)
-  if only_real
-    ps = Tuple{Int, Int}[(a, 0)]
-  else
-    ps = possible_signatures(GP)
-    @assert length(ps) == 2
+  ps = Tuple{Int, Int}[(a, 0)]
+  if !only_real && iseven(a)
+    push!(ps, (0, divexact(a, 2)))
   end
   is_complete = true
   bound_db = fmpz(10)^10000

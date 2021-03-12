@@ -1,8 +1,12 @@
 export fields_database, load_fields, insert_field, insert_fields, insert_complete_table, 
        ramified_primes
 
-function fields_database()
-  return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag")
+function fields_database(password::String = "")
+  if isempty(password)
+    return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag")
+  else
+    return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag password=" * password)
+  end
 end
 
 mutable struct DBField
@@ -612,7 +616,7 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
     #Now, I try the small group id
     id = small_group_identification(G)
     query = "SELECT group_id FROM galois_group WHERE degree = \$1 AND group_order = \$2 AND small_group_id = \$3"
-    values = [d, order, id[2]]
+    values = [d, o, id[2]]
     result = execute(connection, query, values)
     data = columntable(result)[1][1]
     return data
@@ -743,6 +747,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
   execute(connection, "BEGIN;")
   real_embs = signature[1]
   have_signature = (real_embs != -1)
+  count = 0
   for K in fields
     d = discriminant(maximal_order(K))
     if !have_signature
@@ -765,6 +770,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
         end
       end
     end
+    count += 1
     LibPQ.load!(
       (real_embeddings = [real_embs], 
       polynomial = [pol], 
@@ -783,6 +789,11 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
         automorphisms_order
       ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6);",
     )
+    if count == 100000
+      execute(connection, "COMMIT;")
+      count = 0 
+      execute(connection, "BEGIN;")
+    end
   end
   execute(connection, "COMMIT;")
   #Finally, we save the completeness data
