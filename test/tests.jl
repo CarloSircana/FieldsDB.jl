@@ -14,18 +14,22 @@
     @test rp == rpK
 
     @test !FieldsDB.isclass_group_known(flds[i])
+    @test FieldsDB.assumes_GRH(flds[i]) === missing
     FieldsDB.set_class_group(flds[i])
     @test FieldsDB.isclass_group_known(flds[i])
+    @test FieldsDB.assumes_GRH(flds[i]) == 1
     C = class_group(K)[1]
     CK = class_group(flds[i])
     @test isisomorphic(C, CK)
 
+    s = signature(flds[i])
+    s1 = signature(K)
+    @test s == s1
+
     @test !FieldsDB.isregulator_known(flds[i])
     FieldsDB.set_regulator(flds[i])
     @test FieldsDB.isregulator_known(flds[i])
-    r = regulator(K)
-    rK = regulator(flds[i])
-    @test overlaps(r, rK)
+    #TEST THAT THE REGULATOR IS CORRECT!
 
     @test !FieldsDB.aresubfields_known(flds[i])
     FieldsDB.set_subfields(flds[i])
@@ -45,6 +49,7 @@
     @test !FieldsDB.iscanonical_polynomial_known(flds[i])
     FieldsDB.set_canonical_defining_polynomial(flds[i])
     @test FieldsDB.iscanonical_polynomial_known(flds[i])
+    @test FieldsDB.has_canonical_defining_polynomial(flds[i]) == 1
     K1 = simplify(K, canonical = true)[1]
     f = defining_polynomial(flds[i], cached = false)
     Qx = parent(f)
@@ -63,6 +68,7 @@
     fl = FieldsDB.Hecke.iscm_field(K)[1]
     tf = FieldsDB.is_cm(flds[i])
     @test fl == (tf == 1)
+    @test tf == FieldsDB.is_cm(flds[i])
 
     @test !FieldsDB.istorsion_unit_size_known(flds[i])
     FieldsDB.set_torsion_unit_size(flds[i])
@@ -156,15 +162,29 @@ end
   @test load_fields(db, signature = (8, 0), class_group_ranks_range = Dict(fmpz(2) => (2, 2)), only_count = Val{true}) == 0
   @test load_fields(db, signature = (0, 4), class_group_ranks_range = Dict(fmpz(2) => (1, 2)), only_count = Val{true}) == 1
   GP = FieldsDB.isomorphic_transitive_perm_group(small_group(4, 2), 4)
-  @test load_fields(db, galois_group = GP, only_count = Val{true}) == 136
+  @test load_fields(db, galois_group = GP, discriminant_range = (-fmpz(10)^10, fmpz(10)^10), only_count = Val{true}) == 136
 end
 
-#=
-@testset "Large groups" begin
-  G = symmetric_group(34)
-  FieldsDB.insert_group(db, G)
-  @test FieldsDB._find_group_id(db, G) !== missing
+
+@testset "Large entries" begin
+
+  G = small_group(40, 1)
+  GP = FieldsDB.isomorphic_transitive_perm_group(G, 40)
+  FieldsDB.insert_group(db, GP)
+  @test FieldsDB._find_group_id(db, GP) !== missing
+
+  G1 = symmetric_group(34)
+  FieldsDB.insert_group(db, G1)
+  #@test FieldsDB._find_group_id(db, G1) !== missing
+  
+  Qx, x = PolynomialRing(FlintQQ, "x")
+  f = x^1000-2
+  K, a = number_field(f)
+  OK = maximal_order(K)
+  insert_field(K, db)
+  x = FieldsDB.find_DBfield(db, K)
+  @test discriminant(x) == discriminant(OK)
 end
-=#
+
   
 

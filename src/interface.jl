@@ -204,7 +204,7 @@ function Oscar.signature(x::DBField)
   end
   n = degree(x)
   query = "SELECT real_embeddings FROM field WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.data])
+  result = execute(x.connection, query, [x.id])
   real_embs = columntable(result)[1][1]
   x.signature = (real_embs, divexact(n-real_embs, 2))
   return x.signature
@@ -268,13 +268,14 @@ function Oscar.regulator(x::DBField)
     return x.regulator
   end
   query = "SELECT regulator FROM field WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => BigFloat))
+  result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => Decimal))
   data = columntable(result)[1][1]
   if data === missing
     return missing
   end
+  s = string(data)
   R = ArbField(64, cached = false)
-  return R(data)
+  return R(s)
 end
 
 function Oscar.galois_group(x::DBField)
@@ -283,7 +284,7 @@ function Oscar.galois_group(x::DBField)
   end
   #I need to retrieve it from the database.
   query = "SELECT group_id FROM field WHERE field_id = \$1"
-  result = execute(x.connection, query, [x.id])
+  result = execute(x.connection, query, [x.id], column_types = Dict(:group_id => Int))
   data = columntable(result)[1][1]
   if data === missing
     return missing
@@ -516,9 +517,9 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
         if res === missing
           println("The data might not be complete, even assuming GRH")
         end
-        if res[2] > max(abs(discriminant_range[1]), abs(discriminant_range[2]))
+        if res[2] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
           println("The data is complete even without assuming GRH")
-        elseif res[1] > max(abs(discriminant_range[1]), abs(discriminant_range[2]))
+        elseif res[1] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
           println("The data is complete assuming GRH")
         end
       else
@@ -539,9 +540,9 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
           end
           if ismissing
             println("The data might not be complete, even assuming GRH")
-          elseif res[2] > max(abs(discriminant_range[1]), abs(discriminant_range[2]))
+          elseif res[2] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
             println("The data is complete even without assuming GRH")
-          elseif res[1] > max(abs(discriminant_range[1]), abs(discriminant_range[2]))
+          elseif res[1] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
             println("The data is complete assuming GRH")
           end
         end
@@ -699,15 +700,15 @@ end
 
 function find_group(connection::LibPQ.Connection, id::Int)
   #First, I try with the transitive_group_id
-  query = "SELECT degree, transitive_group_id FROM galois_group WHERE group_id = \$1"
-  result = execute(x.connection, query1, [id], column_types = Dict(:degree => Int64, :transitive_group_id => Int64))
-  data = columntable(result)[2][1]
+  query1 = "SELECT degree, transitive_group_id FROM galois_group WHERE group_id = \$1"
+  result = execute(connection, query1, [id], column_types = Dict(:degree => Int64, :transitive_group_id => Int64))
+  data = columntable(result)
   deg = data[1][1]
   if data !== missing
     return transitive_group(deg, data[2][1])
   end
   query2 = "SELECT group_order, small_group_id FROM galois_group WHERE group_id = \$1"
-  result2 = execute(x.connection, query2, [data], column_types = Dict(:group_order => Int64, :small_group_id => Int64))
+  result2 = execute(connection, query2, [id], column_types = Dict(:group_order => Int64, :small_group_id => Int64))
   data2 = columntable(result2)
   if data2[2][1] !== missing
     #I have a polycyclic group and I want to get a perm group of the right degree.
@@ -716,7 +717,7 @@ function find_group(connection::LibPQ.Connection, id::Int)
     return H
   end
   query3 = "SELECT generators FROM galois_group WHERE group_id = \$1"
-  result3 = execute(x.connection, query3, [data])
+  result3 = execute(connection, query3, [id])
   data3 = columntable(result2)[1][1]
   S = symmetric_group(deg)
   g = eval(Meta.parse(data3))
@@ -1101,18 +1102,17 @@ function set_galois_group(x::DBField, G::PermGroup)
   return nothing
 end
 
-function set_regulator(x::DBField, r::arb)
-  query = "UPDATE field SET regulator = \$1  WHERE field_id = \$2"
-  execute(x.connection, query, (BigFloat(r), x.id))
-  return nothing
-end
-
 function set_class_group(x::DBField, C::GrpAbFinGen; GRH::Bool = true)
   id = _find_class_group_id(x.connection, C)
   if id === missing
     insert_class_group(x.connection, C)
     id = _find_class_group_id(x.connection, C)
   end 
+  if GRH
+    x.GRH = 1
+  else
+    x.GRH = 2
+  end
   query = "UPDATE field SET class_group_id = \$1, GRH = \$2  WHERE field_id = \$3"
   execute(x.connection, query, (id, GRH, x.id))
   return nothing
@@ -1147,6 +1147,8 @@ function set_canonical_defining_polynomial(x::DBField)
   K = number_field(x)
   K1 = simplify(K, canonical = true, cached = false, save_LLL_basis = false)[1]
   set_polynomial(x, defining_polynomial(K1), is_canonical = true)
+  x.is_canonical_poly = 1
+  return nothing
 end
 
 function set_ramified_primes(x::DBField)
@@ -1178,7 +1180,10 @@ function set_class_group(x::DBField, GRH::Bool = true)
 end
 
 function set_regulator(x::DBField)
-  set_regulator(x, regulator(number_field(x)))
+  r = _regulator_as_decimal(number_field(x))
+  query = "UPDATE field SET regulator = \$1  WHERE field_id = \$2"
+  execute(x.connection, query, (r, x.id))
+  return nothing
 end
 
 function set_class_group_and_regulator(x::DBField, GRH::Bool = true)
@@ -1186,7 +1191,7 @@ function set_class_group_and_regulator(x::DBField, GRH::Bool = true)
   OK = maximal_order(K)
   C = class_group(OK, GRH = GRH)[1]
   set_class_group(x, C, GRH = GRH)
-  set_regulator(x, regulator(number_field(x)))
+  set_regulator(x)
 end
 
 function set_galois_group(x::DBField)

@@ -21,7 +21,7 @@ function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only
       break
     end
     bound_db = min(bound_db, dbound_completeness[1])
-    if bound_db <= absolute_bound
+    if bound_db < absolute_bound
       is_complete = false
     end
   end
