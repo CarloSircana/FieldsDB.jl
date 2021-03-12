@@ -56,7 +56,7 @@ end
 
 function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
   s = split(x[2:end-1], ",")
-  return [parse(BigInt, split(ss, ".")[1]) for ss in s]
+  return BigInt[parse(BigInt, split(ss, ".")[1]) for ss in s]
 end
 
 ################################################################################
@@ -288,34 +288,9 @@ function Oscar.galois_group(x::DBField)
   if data === missing
     return missing
   end
-  query1 = "SELECT transitive_group_id FROM galois_group WHERE group_id = \$1"
-  result1 = execute(x.connection, query1, [data], column_types = Dict(:transitive_group_id => Int64))
-  data1 = columntable(result1)[1][1]
-  if data1 !== missing
-    x.galois_group = transitive_group(degree(x), data1)
-    return x.galois_group
-  end
-  query2 = "SELECT group_order, small_group_id FROM galois_group WHERE group_id = \$1"
-  result2 = execute(x.connection, query2, [data], column_types = Dict(:group_order => Int64, :small_group_id => Int64))
-  data2 = columntable(result2)
-  if data2[2][1] !== missing
-    #I have a polycyclic group and I want to get a perm group of the right degree.
-    PC = small_group(data[1][1], data[2][1])
-    H = isomorphic_transitive_perm_group(PC, degree(x))
-    return H
-  end
-  query3 = "SELECT generators FROM galois_group WHERE group_id = \$1"
-  result3 = execute(x.connection, query3, [data])
-  data3 = columntable(result2)[1][1]
-  S = symmetric_group(degree(x))
-  g = eval(Meta.parse(data3))
-  perms = Vector{PermGroupElem}(undef, length(g))
-  for i = 1:length(g)
-    perms[i] = S(g[i])
-  end
-  H, mH = sub(S, perms)
-  x.galois_group = H
-  return H
+  G = find_group(x.connection, data)
+  x.galois_group = G
+  return G
 end
 
 function is_cm(x::DBField)
@@ -486,12 +461,12 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
   end
   if !isempty(unramified_outside)
     push!(parameters, "ramified_primes <@ \$$(ind)")
-    push!(values, [BigInt(x) for x in unramified_outside])
+    push!(values, BigInt[BigInt(x) for x in unramified_outside])
     ind += 1
   end
   if !isempty(ramified_at)
     push!(parameters, "ramified_primes @> \$$(ind)")
-    push!(values, [BigInt(x) for x in ramified_at])
+    push!(values, BigInt[BigInt(x) for x in ramified_at])
     ind += 1
   end
   if !isone(order(galois_group))
@@ -588,11 +563,13 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
     query =  query * parameters[end]
   end
   result = execute(connection, query, values)
-  data = columntable(result)[1]
+  data1 = columntable(result)
   if only_count == Val{true}
-    return data[1]
+    return data1[1][1]::Int
   end
-  fields = Vector{DBField}(undef, length(data))
+  data = data1[1]
+  l = length(data)::Int
+  fields = Vector{DBField}(undef, l)
   for j = 1:length(fields)
     fields[j] = DBField(connection, data[j])
   end
@@ -606,9 +583,9 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
     #GREAT! Unique identification.
     query = "SELECT group_id FROM galois_group WHERE degree = \$1 AND transitive_group_id = \$2"
     values = Int[d, id]
-    result = execute(connection, query, values)
+    result = execute(connection, query, values, column_types = Dict(:group_id => Int64))
     data = columntable(result)[1][1]
-    return data
+    return data::Union{Missing, Int}
   end
   
   o = order(G)
@@ -617,14 +594,14 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
     id = small_group_identification(G)
     query = "SELECT group_id FROM galois_group WHERE degree = \$1 AND group_order = \$2 AND small_group_id = \$3"
     values = [d, o, id[2]]
-    result = execute(connection, query, values)
+    result = execute(connection, query, values, column_types = Dict(:group_id => Int64))
     data = columntable(result)[1][1]
-    return data
+    return data::Union{Missing, Int}
   end
   #Sad. That's quite hard now. I have to search for all the groups
   #with a given order and check isomorphism.
   query = "SELECT group_id, generators FROM galois_group WHERE degree = \$1 AND group_order = \$2"
-  result = execute(connection, query, [d, o])
+  result = execute(connection, query, [d, o], column_types = Dict(:group_id => Int64, :generators => String))
   data = Tables.rows(result)
   ind = 0
   S = symmetric_group(d)
@@ -633,7 +610,7 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
     perms = PermGroupElem[S(x) for x in vects]
     H, mH = sub(S, perms)
     if isisomorphic(G, H)[1]
-      return r[1]
+      return r[1]::Int
     end
   end
   return missing
@@ -643,13 +620,13 @@ function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
   if isone(order(C))
     query = "SELECT class_group_id FROM class_group WHERE group_order = \$1"
     result = execute(connection, query, [1], column_types = Dict(:class_group_id => Int64))
-    return columntable(result)[1][1]
+    return columntable(result)[1][1]::Union{Missing, Int}
   end
   invs = map(BigInt, snf(C)[1].snf)
   query = "SELECT class_group_id FROM class_group WHERE structure = \$1"
   result = execute(connection, query, [invs], column_types = Dict(:class_group_id => Int64))
   res = columntable(result)
-  return res[1][1]
+  return res[1][1]::Union{Missing, Int}
 end
 
 function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, Tuple{Int, Int}})
@@ -684,6 +661,13 @@ function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, T
   return ids
 end
 
+function completeness_data(db::LibPQ.Connection)
+  query = "SELECT GRH, discriminant_bound, group_id, real_embeddings FROM completeness"
+  result = execute(db, query,  column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
+  pretty_table(result)
+  return nothing
+end
+
 function find_completeness_data(connection::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
   idG = _find_group_id(connection, G)
   if idG === missing
@@ -713,6 +697,37 @@ function find_completeness_data(connection::LibPQ.Connection, G::PermGroup, sign
   return res
 end
 
+function find_group(connection::LibPQ.Connection, id::Int)
+  #First, I try with the transitive_group_id
+  query = "SELECT degree, transitive_group_id FROM galois_group WHERE group_id = \$1"
+  result = execute(x.connection, query1, [id], column_types = Dict(:degree => Int64, :transitive_group_id => Int64))
+  data = columntable(result)[2][1]
+  deg = data[1][1]
+  if data !== missing
+    return transitive_group(deg, data[2][1])
+  end
+  query2 = "SELECT group_order, small_group_id FROM galois_group WHERE group_id = \$1"
+  result2 = execute(x.connection, query2, [data], column_types = Dict(:group_order => Int64, :small_group_id => Int64))
+  data2 = columntable(result2)
+  if data2[2][1] !== missing
+    #I have a polycyclic group and I want to get a perm group of the right degree.
+    PC = small_group(data[1][1], data[2][1])
+    H = isomorphic_transitive_perm_group(PC, deg)
+    return H
+  end
+  query3 = "SELECT generators FROM galois_group WHERE group_id = \$1"
+  result3 = execute(x.connection, query3, [data])
+  data3 = columntable(result2)[1][1]
+  S = symmetric_group(deg)
+  g = eval(Meta.parse(data3))
+  perms = Vector{PermGroupElem}(undef, length(g))
+  for i = 1:length(g)
+    perms[i] = S(g[i])
+  end
+  H, mH = sub(S, perms)
+  return H
+end
+
 function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField)
   d = degree(K)
   disc = discriminant(maximal_order(K))
@@ -738,7 +753,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
   g_id = _find_group_id(connection, galois_group)
   if g_id === missing
     insert_group(connection, galois_group)
-    g_id = _find_group_id(connection, galois_group)
+    g_id = _find_group_id(connection, galois_group)::Int
   end
   #I compute the number of automorphisms of the fields
   #If H is the subgroup fixing K, the number of automorphisms is equal to
@@ -813,7 +828,7 @@ function insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conne
     g_id = _find_group_id(connection, galois_group)
     if g_id === missing
       insert_group(connection, galois_group)
-      g_id = _find_group_id(connection, galois_group)
+      g_id = _find_group_id(connection, galois_group)::Int
     end
   else
     g_id = 0
@@ -1079,7 +1094,7 @@ function set_galois_group(x::DBField, G::PermGroup)
   id = _find_group_id(x.connection, G)
   if id === missing
     insert_group(x.connection, G)
-    id = _find_group_id(x.connection, G)
+    id = _find_group_id(x.connection, G)::Int
   end
   query = "UPDATE field  SET group_id = \$1  WHERE field_id = \$2"
   execute(x.connection, query, (id, x.id))
@@ -1098,7 +1113,7 @@ function set_class_group(x::DBField, C::GrpAbFinGen; GRH::Bool = true)
     insert_class_group(x.connection, C)
     id = _find_class_group_id(x.connection, C)
   end 
-  query = "UPDATE field  SET class_group_id = \$1, GRH = \$2  WHERE field_id = \$3"
+  query = "UPDATE field SET class_group_id = \$1, GRH = \$2  WHERE field_id = \$3"
   execute(x.connection, query, (id, GRH, x.id))
   return nothing
 end
