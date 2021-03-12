@@ -1403,5 +1403,31 @@ function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
   return res  
 end
 
+################################################################################
+#
+#  Helper functions for regulator
+#
+################################################################################
 
+function _string(x::arb, digits::Int)
+   cstr = ccall((:arb_get_str, Hecke.Nemo.libarb), Ptr{UInt8},
+                (Ref{arb}, Int, UInt),
+                x, Int(digits), UInt(2))
+   res = unsafe_string(cstr)
+   ccall((:flint_free, Hecke.Nemo.libflint), Nothing,
+         (Ptr{UInt8},),
+         cstr)
+   return res
+end
 
+function _regulator_as_string(K::AnticNumberField, scale::Int = 20)
+  p = Int(ceil(3.3 * (scale + 2)))
+  # make radius less than 10^(-(scale + 2))
+  U, mU = unit_group_fac_elem(maximal_order(K))
+  r = regulator([mU(U[i]) for i in 2:ngens(U)], p)
+  return _string(r, scale)
+end
+
+function _regulator_as_decimal(K::AnticNumberField, scale::Int = 20)
+  return decimal(_regulator_as_string(K, scale))
+end

@@ -2,7 +2,7 @@ module FieldsDB
 
   import Oscar, Pkg
   export Oscar
-  using LibPQ, Tables
+  using LibPQ, Tables, Decimals
   
   exclude = Symbol[:DirectProductOfElem, :coset_decomposition, :disc_log,
   :generator, :isdihedral_group, :visual, :weight  ]

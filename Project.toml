@@ -4,6 +4,7 @@ authors = ["CarloSircana <sircana@mathematik.uni-kl.de>"]
 version = "0.1.0"
 
 [deps]
+Decimals = "abce61dc-4473-55a0-ba07-351d65e31d42"
 LibPQ = "194296ae-ab2e-5f79-8cd4-7183a0a5a0d1"
 Oscar = "f1435218-dba5-11e9-1e4d-f1a5fab5fc13"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
