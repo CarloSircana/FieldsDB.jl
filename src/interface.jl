@@ -664,7 +664,7 @@ end
 function completeness_data(db::LibPQ.Connection)
   query = "SELECT GRH, discriminant_bound, group_id, real_embeddings FROM completeness"
   result = execute(db, query,  column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
-  pretty_table(result)
+  pretty_table(result, display_size = (-1, -1))
   return nothing
 end
 
