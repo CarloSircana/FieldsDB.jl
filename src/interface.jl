@@ -805,7 +805,7 @@ function insert_complete_table(connection::LibPQ.Connection, fields::Vector{Anti
         automorphisms_order
       ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6);",
     )
-    if count == 100000
+    if count == 10000
       execute(connection, "COMMIT;")
       count = 0 
       execute(connection, "BEGIN;")
