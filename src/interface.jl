@@ -1411,9 +1411,20 @@ end
 ################################################################################
 
 function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
-
   query = "SELECT field_id FROM field WHERE class_group_id IS NULL LIMIT 20"
-  result = Tables.rows(execute(connection, query, []))
+  result = Tables.rows(execute(connection, query))
+  res = Vector{DBField}(undef, 20)
+  ind = 1
+  for x in result
+    res[ind] = DBField(connection, x[1])
+    ind += 1
+  end
+  return res  
+end
+
+function _get_fields_for_subfields_computation(connection::LibPQ.Connection)
+  query = "SELECT field_id FROM field WHERE subfields IS NULL LIMIT 20"
+  result = Tables.rows(execute(connection, query))
   res = Vector{DBField}(undef, 20)
   ind = 1
   for x in result
