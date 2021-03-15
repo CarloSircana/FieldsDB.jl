@@ -623,7 +623,11 @@ function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
     result = execute(connection, query, [1], column_types = Dict(:class_group_id => Int64))
     return columntable(result)[1][1]::Union{Missing, Int}
   end
-  invs = map(BigInt, snf(C)[1].snf)
+  Csnf = snf(C)[1]
+  invs = Vector{BigInt}(undef, ngens(Csnf))
+  for i = 1:ngens(Csnf)
+    invs[i] = BigInt(Csnf.snf[i])
+  end
   query = "SELECT class_group_id FROM class_group WHERE structure = \$1"
   result = execute(connection, query, [invs], column_types = Dict(:class_group_id => Int64))
   res = columntable(result)
