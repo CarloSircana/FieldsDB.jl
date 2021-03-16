@@ -66,7 +66,7 @@ function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only
       cd = 2^pinvariants
     else
       #2 is not wildly ramified. Then we only have the boring bound...
-      d = minimum(keys(factor(invariants[end]).fac))
+      d = Int(minimum(keys(factor(invariants[end]).fac)))
       cd = 2^((d-1)*div(pinvariants, d))
     end 
     #But I want the minimum. So I have to look at the other primes..
@@ -85,7 +85,7 @@ function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only
         end
       else
         #p is not wildly ramified. Then we only have the boring bound...
-        d = minimum(keys(factor(invariants[end]).fac))
+        d = Int(minimum(keys(factor(invariants[end]).fac)))
         cd1 = p^((d-1)*div(pinvariants, d))
         if cd > cd1
           cd = cd1

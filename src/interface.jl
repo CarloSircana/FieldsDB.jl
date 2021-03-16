@@ -665,13 +665,6 @@ function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, T
   return ids
 end
 
-function completeness_data(db::LibPQ.Connection)
-  query = "SELECT GRH, discriminant_bound, group_id, real_embeddings FROM completeness"
-  result = execute(db, query,  column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
-  pretty_table(result, display_size = (-1, -1))
-  return nothing
-end
-
 function find_completeness_data(connection::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
   idG = _find_group_id(connection, G)
   if idG === missing
@@ -707,7 +700,7 @@ function find_group(connection::LibPQ.Connection, id::Int)
   result = execute(connection, query1, [id], column_types = Dict(:degree => Int64, :transitive_group_id => Int64))
   data = columntable(result)
   deg = data[1][1]
-  if data !== missing
+  if data[2][1] !== missing
     return transitive_group(deg, data[2][1])
   end
   query2 = "SELECT group_order, small_group_id FROM galois_group WHERE group_id = \$1"
@@ -715,7 +708,7 @@ function find_group(connection::LibPQ.Connection, id::Int)
   data2 = columntable(result2)
   if data2[2][1] !== missing
     #I have a polycyclic group and I want to get a perm group of the right degree.
-    PC = small_group(data[1][1], data[2][1])
+    PC = small_group(data2[1][1], data2[2][1])
     H = isomorphic_transitive_perm_group(PC, deg)
     return H
   end
@@ -1001,7 +994,7 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
     )
     return nothing
   catch e 
-    
+
   end
   #Bad case. Cache a good set of generators.
   g = gens(G)
@@ -1470,4 +1463,108 @@ end
 
 function _regulator_as_decimal(K::AnticNumberField, scale::Int = 20)
   return decimal(_regulator_as_string(K, scale))
+end
+
+################################################################################
+#
+#  Completeness data
+#
+################################################################################
+
+function completeness_data(db::LibPQ.Connection)
+  query = "SELECT GRH, discriminant_bound, group_id, real_embeddings FROM completeness"
+  result = execute(db, query,  column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
+  pretty_table(result, display_size = (-1, -1))
+  return nothing
+end
+
+function _print_group(db, G::PermGroup)
+  d = degree(G)
+  try
+    id = transitive_group_identification(G)
+    if id != -1
+      return "$(d)T$(id)"
+    end
+  catch e 
+
+  end
+  try 
+    id1 = small_group_identification(G)
+    return "Degree $(d) SGid: $(id1)"
+  catch e
+    
+  end
+  return "Degree $(d) DBid: $(_find_group_id(db, G))"
+end
+
+function _construct_matrix(tb, G, db)
+  #Now, I need to organize the table for the pretty printing.
+  M = Array{String, 2}(undef, length(tb[1]), 4)
+  M[1, 1] = _print_group(db, G)
+  for i = 1:length(tb[1])
+    if i > 1
+      M[i, 1] = ""
+    end
+    M[i, 2] = string(tb[1][i])
+    signatr = (tb[3][i], div(degree(G)-tb[3][i], 2))
+    M[i, 3] = string(signatr)
+    e = Int(round(log(10, tb[2][1])))
+    M[i, 4] = string("~10^$e")
+  end
+  return M
+end
+
+function _construct_matrix(db::LibPQ.Connection, G::PermGroup)
+  id = _find_group_id(db, G)
+  query = "SELECT GRH, discriminant_bound, real_embeddings FROM completeness WHERE group_id = \$1"
+  result = execute(db, query, [id], column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
+  tb = columntable(result)
+  if tb[1][1] === missing
+    return Array{String, 2}(undef, 0, 4)
+  end
+  return _construct_matrix(tb, G, db)
+end
+
+function completeness_data(db::LibPQ.Connection, G::PermGroup)
+  id = _find_group_id(db, G)
+  if id === missing
+    println("Data not available in the database")
+    return nothing
+  end
+  query = "SELECT GRH, discriminant_bound, real_embeddings FROM completeness WHERE group_id = \$1"
+  result = execute(db, query, [id], column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
+  tb = columntable(result)
+  if tb[1][1] === missing
+    println("Data not available in the database")
+    return nothing
+  end
+  M = _construct_matrix(tb, G)
+  t = Tables.table(M)
+  pretty_table(t, ["Group", "GRH", "signature", "discriminant bound"], compact_printing = true)
+  return nothing
+end
+
+function completeness_data(db::LibPQ.Connection, degree::Int)
+  #First, we find the groups.
+  query = "SELECT group_id FROM galois_group WHERE degree = \$1"
+  result = execute(db, query, [degree], column_types = Dict(:group_id => Int))
+  tg = columntable(result)
+  if tg[1][1] === missing
+    println("Data not available in the database")
+    return nothing
+  end
+  groups = PermGroup[]
+  for x in tg[1]
+    r = find_group(db, x) 
+    if r !== missing
+      push!(groups, r)
+    end
+  end
+  M = Array{String, 2}(undef, 0, 4)
+  for G in groups
+    M = vcat(M, _construct_matrix(db, G))
+  end
+  t = Tables.table(M)
+  pretty_table(t, ["Group", "GRH", "signature", "discriminant bound"], compact_printing = true)
+  return nothing
 end
