@@ -588,7 +588,6 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
     data = columntable(result)[1][1]
     return data::Union{Missing, Int}
   end
-  
   o = order(G)
   if o < 2000 && o != 1024
     #Now, I try the small group id
@@ -946,8 +945,8 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
   isperf = isperfect(G)
   isprim = isprimitive(G)
   d = degree(G)
-  if d <= 33
-    id = transitive_group_identification(G)
+  id = transitive_group_identification(G)
+  if id != -1
     LibPQ.load!(
       (group_order = [o], 
       degree = [d],
@@ -974,7 +973,7 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
     )
     return nothing
   end
-  if o < 2000 && o != 1024
+  try 
     id = small_group_identification(G)
     LibPQ.load!(
       (group_order = [o], 
@@ -1001,6 +1000,8 @@ function insert_group(connection::LibPQ.Connection, G::PermGroup)
       ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9);"
     )
     return nothing
+  catch e 
+    
   end
   #Bad case. Cache a good set of generators.
   g = gens(G)
@@ -1184,7 +1185,11 @@ function set_class_group(x::DBField, GRH::Bool = true)
 end
 
 function set_regulator(x::DBField)
-  r = _regulator_as_decimal(number_field(x))
+  if degree(x) == 2 && signature(x) == (0, 1)
+    r = Decimal(1)
+  else
+    r = _regulator_as_decimal(number_field(x))
+  end
   query = "UPDATE field SET regulator = \$1  WHERE field_id = \$2"
   execute(x.connection, query, (r, x.id))
   return nothing
