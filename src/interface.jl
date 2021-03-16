@@ -509,47 +509,6 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
     push!(values, ids_class_group)
     ind += 1
   end
-  if discriminant_range[2] != -1
-    #I want to print the completeness data.
-    if order(galois_group) != 1
-      if signature[1] != -1
-        res = find_completeness_data(connection, galois_group, signature)
-        if res === missing
-          println("The data might not be complete, even assuming GRH")
-        end
-        if res[2] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
-          println("The data is complete even without assuming GRH")
-        elseif res[1] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
-          println("The data is complete assuming GRH")
-        end
-      else
-        ps = possible_signatures(galois_group)
-        res = find_completeness_data(connection, galois_group, ps[1])
-        if res === missing
-          println("The data might not be complete, even assuming GRH")
-        else
-          ismissing = false
-          for i = 2:length(ps)
-            resi = find_completeness_data(connection, galois_group, ps[i])
-            if resi === missing
-              ismissing = true
-              break
-            end
-            res[1] = min(res[1], resi[1])
-            res[2] = min(res[2], resi[2])
-          end
-          if ismissing
-            println("The data might not be complete, even assuming GRH")
-          elseif res[2] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
-            println("The data is complete even without assuming GRH")
-          elseif res[1] >= max(abs(discriminant_range[1]), abs(discriminant_range[2]))
-            println("The data is complete assuming GRH")
-          end
-        end
-      end
-    end
-  end
-
   #Now, I can do the query
   if only_count == Val{true}
     query = "SELECT COUNT(*) FROM field"
@@ -1471,13 +1430,6 @@ end
 #
 ################################################################################
 
-function completeness_data(db::LibPQ.Connection)
-  query = "SELECT GRH, discriminant_bound, group_id, real_embeddings FROM completeness"
-  result = execute(db, query,  column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
-  pretty_table(result, display_size = (-1, -1))
-  return nothing
-end
-
 function _print_group(db, G::PermGroup)
   d = degree(G)
   try
@@ -1499,7 +1451,7 @@ end
 
 function _construct_matrix(tb, G, db)
   #Now, I need to organize the table for the pretty printing.
-  M = Array{String, 2}(undef, length(tb[1]), 4)
+  M = Array{String, 2}(undef, length(tb[1]), 5)
   M[1, 1] = _print_group(db, G)
   for i = 1:length(tb[1])
     if i > 1
@@ -1510,6 +1462,7 @@ function _construct_matrix(tb, G, db)
     M[i, 3] = string(signatr)
     e = Int(round(log(10, tb[2][1])))
     M[i, 4] = string("~10^$e")
+    M[i, 5] = string(load_fields(db, galois_group = G, signature = signatr, only_count = Val{true}))
   end
   return M
 end
@@ -1520,7 +1473,7 @@ function _construct_matrix(db::LibPQ.Connection, G::PermGroup)
   result = execute(db, query, [id], column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
   tb = columntable(result)
   if tb[1][1] === missing
-    return Array{String, 2}(undef, 0, 4)
+    return Array{String, 2}(undef, 0, 5)
   end
   return _construct_matrix(tb, G, db)
 end
@@ -1531,16 +1484,13 @@ function completeness_data(db::LibPQ.Connection, G::PermGroup)
     println("Data not available in the database")
     return nothing
   end
-  query = "SELECT GRH, discriminant_bound, real_embeddings FROM completeness WHERE group_id = \$1"
-  result = execute(db, query, [id], column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
-  tb = columntable(result)
-  if tb[1][1] === missing
+  M = _construct_matrix(db, G)
+  if iszero(size(M)[1])
     println("Data not available in the database")
     return nothing
   end
-  M = _construct_matrix(tb, G)
   t = Tables.table(M)
-  pretty_table(t, ["Group", "GRH", "signature", "discriminant bound"], compact_printing = true)
+  pretty_table(t, ["Group", "GRH", "Signature", "Discriminant bound", "Number of fields"], compact_printing = true)
   return nothing
 end
 
@@ -1560,11 +1510,11 @@ function completeness_data(db::LibPQ.Connection, degree::Int)
       push!(groups, r)
     end
   end
-  M = Array{String, 2}(undef, 0, 4)
+  M = Array{String, 2}(undef, 0, 5)
   for G in groups
     M = vcat(M, _construct_matrix(db, G))
   end
   t = Tables.table(M)
-  pretty_table(t, ["Group", "GRH", "signature", "discriminant bound"], compact_printing = true)
+  pretty_table(t, ["Group", "GRH", "Signature", "Discriminant bound", "Number of fields"], compact_printing = true)
   return nothing
 end
