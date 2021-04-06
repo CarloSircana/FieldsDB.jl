@@ -16,5 +16,8 @@ module FieldsDB
   end
 
   include("./interface.jl")
+  include("./queries.jl")
+  include("./insertion.jl")
+  include("./completeness.jl")
   include("./fields.jl")
 end # module
