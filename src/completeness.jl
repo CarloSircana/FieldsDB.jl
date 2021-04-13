@@ -45,7 +45,7 @@ function _construct_matrix(db::LibPQ.Connection, G::PermGroup)
   id = _find_group_id(db, G)
   query = "SELECT GRH, discriminant_bound, real_embeddings FROM completeness WHERE group_id = \$1"
   result = execute(db, query, [id], column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
-  @show tb = columntable(result)
+  tb = columntable(result)
   if tb[1][1] === missing
     return Array{String, 2}(undef, 0, 5)
   end

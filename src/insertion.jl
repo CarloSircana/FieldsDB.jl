@@ -56,10 +56,10 @@ function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, d
   fields_to_insert = AnticNumberField[]
   for x in fields
     dx = degree(x)
-    polx = defining_polynomial(x)
+    polx = coefficients(defining_polynomial(x))
     found = false
     for y in lf
-      if degree(y) == degree(x) && defining_polynomial(y) == polx
+      if degree(y) == degree(x) && coefficients(defining_polynomial(y)) == polx
         found = true
         break
       end
@@ -134,7 +134,7 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
           degree,
           group_id,
           automorphisms_order
-        ) VALUES (\$1, \$2, \$3, \$4, \$5);",
+        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6);",
       )
     else
       LibPQ.load!(
