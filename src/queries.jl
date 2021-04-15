@@ -27,7 +27,7 @@ function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vect
 end
 
 
-function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int} = (0, -1), discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
+function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
                          signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
                          galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
                          class_group_structure::Vector{fmpz} = fmpz[-1], 
@@ -37,16 +37,15 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
   parameters = String[]
   values = []
   ind = 1
-  if degree_range[2] != -1
-    if degree_range[1] == degree_range[2]
-      push!(parameters, "degree = \$$(ind)")
-      push!(values, degree_range[1])
-      ind += 1
+
+  if degree != -1
+    push!(parameters, "degree = $(degree)")
+  end
+  if first(degree_range) != -1
+    if first(degree_range) == last(degree_range)
+      push!(parameters, "degree = $(first(degree_range))")
     else
-      push!(parameters, "degree BETWEEN \$$(ind) AND \$$(ind+1) ")
-      push!(values, degree_range[1])
-      push!(values, degree_range[2])
-      ind += 2
+      push!(parameters, "degree BETWEEN $(first(degree_range)) AND $(last(degree_range)) ")
     end
   end
   if discriminant_range[2] != -1
@@ -62,9 +61,7 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
     end
   end
   if signature[1] != -1
-    push!(parameters, "real_embeddings = \$$(ind)")
-    push!(values, signature[1])
-    ind += 1
+    push!(parameters, "real_embeddings = $(signature[1])")
   end
   if !isempty(unramified_outside)
     push!(parameters, "ramified_primes <@ \$$(ind)")
@@ -81,16 +78,12 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
     if id_group === missing
       return DBField[]
     end
-    push!(parameters, "group_id = \$$(ind)")
-    push!(values, id_group)
-    ind += 1
+    push!(parameters, "group_id = $(id_group)")
   end
   if class_group_structure[1] != -1
     id_class_group = _find_class_group_id(connection, abelian_group(class_group_structure))
     if id_class_group !== missing
-      push!(parameters, "class_group_id = \$$(ind)")
-      push!(values, id_class_group)
-      ind += 1
+      push!(parameters, "class_group_id = $(id_class_group)")
     end
   end
   if class_number != -1
@@ -121,7 +114,7 @@ function load_fields(connection::LibPQ.Connection; degree_range::Tuple{Int, Int}
   else
     query = "SELECT field_id FROM field"
   end
-  if !isempty(values)
+  if !isempty(parameters)
     query *= " WHERE "
     for i = 1:length(parameters)-1
       query = query * parameters[i] * " AND "
@@ -182,8 +175,8 @@ end
 
 function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
   if isone(order(C))
-    query = "SELECT class_group_id FROM class_group WHERE group_order = \$1"
-    result = execute(connection, query, [1], column_types = Dict(:class_group_id => Int64))
+    query = "SELECT class_group_id FROM class_group WHERE group_order = 1"
+    result = execute(connection, query, column_types = Dict(:class_group_id => Int64))
     return columntable(result)[1][1]::Union{Missing, Int}
   end
   Csnf = snf(C)[1]

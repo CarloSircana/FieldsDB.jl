@@ -104,7 +104,6 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
   end
   #First, I need to sieve the fields. I don't want to have duplicates in the database.
   
-  
   execute(connection, "BEGIN;")
   for K1 in fields
     if isdefining_polynomial_nice(K1)
