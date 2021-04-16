@@ -260,21 +260,24 @@ function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField)
   end
   pol = K.pol
   coeffs = BigInt[BigInt(numerator(coeff(pol, i))) for i = 0:degree(K)]
-  query = "SELECT field_id FROM field WHERE polynomial = \$1"
+  sig = signature(K)
+  d = degree(K)
+  disc = discriminant(maximal_order(K))
+  query = "SELECT field_id FROM field WHERE degree = $d AND discriminant = $disc AND real_embeddings = $(sig[1]) AND polynomial = \$1"
   @time result = columntable(execute(connection, query, Vector{BigInt}[coeffs]))
   if result[1][1] !== missing
     return DBField(connection, result[1][1])
   end
   #Bad luck. Now we need to check isomorphism
   #TODO: Think about it. Would it make sense to compute the canonical defining equation?
-  d = degree(K)
-  disc = discriminant(maximal_order(K))
-  lf = load_fields(connection, degree_range = (d, d), discriminant_range = (disc, disc), signature = signature(K))
+  
+  lf = load_fields(connection, degree_range = (d, d), discriminant_range = (disc, disc), signature = sig)
   if isempty(lf)
     return missing
   end
   for x in lf
-    if isisomorphic(K, number_field(x))[1]
+    @time fl = isisomorphic(K, number_field(x))[1]
+    if fl
       return x
     end
   end
