@@ -263,7 +263,7 @@ function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField)
   sig = signature(K)
   d = degree(K)
   disc = discriminant(maximal_order(K))
-  query = "SELECT field_id FROM field WHERE degree = $d AND discriminant = $disc AND real_embeddings = $(sig[1]) AND polynomial = \$1"
+  query = "SELECT field_id FROM field WHERE degree = $d AND discriminant = $disc AND real_embeddings = $(sig[1]) AND polynomial = \$1 LIMIT 1"
   @time result = columntable(execute(connection, query, Vector{BigInt}[coeffs]))
   if result[1][1] !== missing
     return DBField(connection, result[1][1])
