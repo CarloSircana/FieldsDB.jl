@@ -570,7 +570,7 @@ function set_subfields(x::DBField)
     K = lS[i]
     y = find_DBfield(x.connection, K)
     if y === missing
-      insert_field(K, x.connection, check = false)
+      insert_field(x.connection, K)
       y = find_DBfield(x.connection, K)::DBField
     end
     ids[i] = y.id
@@ -780,7 +780,7 @@ end
 #
 ################################################################################
 
-function _get_fields_for_class_group_computation(connection::LibPQ.Connection, degree)
+function _get_fields_for_class_group_computation(connection::LibPQ.Connection)
   query = "SELECT field_id FROM field WHERE class_group_id IS NULL LIMIT 20"
   result = Tables.rows(execute(connection, query))
   res = Vector{DBField}(undef, 20)
@@ -807,6 +807,18 @@ end
 
 function _get_fields_for_subfields_computation(connection::LibPQ.Connection)
   query = "SELECT field_id FROM field WHERE subfields IS NULL LIMIT 20"
+  result = Tables.rows(execute(connection, query))
+  res = Vector{DBField}(undef, 20)
+  ind = 1
+  for x in result
+    res[ind] = DBField(connection, x[1])
+    ind += 1
+  end
+  return res  
+end
+
+function _get_fields_for_subfields_computation(connection::LibPQ.Connection, degree::Int)
+  query = "SELECT field_id FROM field WHERE degree = $degree AND subfields IS NULL LIMIT 20"
   result = Tables.rows(execute(connection, query))
   res = Vector{DBField}(undef, 20)
   ind = 1
