@@ -20,4 +20,5 @@ module FieldsDB
   include("./insertion.jl")
   include("./completeness.jl")
   include("./fields.jl")
+  include("./stats.jl")
 end # module

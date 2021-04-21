@@ -67,19 +67,35 @@ function get_batch(db::FieldsDB.LibPQ.Connection, degree::Int, batch_size::Int)
   return res[1:ind-1]
 end
 
-function _get_subfields(flds::Vector{AnticNumberField})
+function _get_subfields(flds::Vector{AnticNumberField}, res::Vector{FieldsDB.DBField})
   subs = Vector{AnticNumberField}[]
   deg = degree(flds[1])
-  for K in flds
+  for i = 1:length(flds)
+    K1 = flds[i]
+    OK1 = lll(maximal_order(K1))
+    K = simplify(K1, cached = false)[1]
+    nbK = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K)))
+    nbK1 = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K)))
+    if nbK < nbK1
+      FieldsDB.set_polynomial(res[i], defining_polynomial(K))
+    end
     println(K.pol)
-    OK = lll(maximal_order(K))
     auts = automorphisms(K)
     if length(auts) == deg
       @time subf = Hecke.subfields_normal(K, true)
     else
       @time subf = subfields(K)
     end
-    @time to_insert = AnticNumberField[simplify(x[1], cached = false, save_LLL_basis = false)[1] for x in subf]
+    to_insert = AnticNumberField[]
+    @time for (x, mx) in subf
+      if degree(x) == 1
+        push!(to_insert, Hecke.rationals_as_number_field()[1])
+      elseif degree(x) == degree(K)
+        push!(to_insert, K)
+      else
+        push!(to_insert, simplify(x, cached = false, save_LLL_basis = false)[1])
+      end
+    end
     push!(subs, FieldsDB.isomorphism_class_representatives(to_insert))
   end
   return subs
@@ -87,7 +103,7 @@ end
 
 function main_loop(db::FieldsDB.LibPQ.Connection, deg::Int, batch_size::Int, res::Vector{FieldsDB.DBField})
   flds = AnticNumberField[number_field(x) for x in res]
-  subs = _get_subfields(flds)
+  subs = _get_subfields(flds, res)
   degs = Set{Int}([degree(x) for y in subs for x in y])
   ids = Tuple{AnticNumberField, Int}[]
   fields_to_insert = AnticNumberField[]
