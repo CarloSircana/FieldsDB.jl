@@ -118,9 +118,9 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     print(f, idsx)
     close(f)
     if only_real
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real &> raw_error_$(n)_$(i)_$(s).log`)
     else
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc &> raw_error_$(n)_$(i)_$(s).log`)
     end
   end
   ind = 1
@@ -140,14 +140,20 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     if iseven(n) && !only_real 
       FieldsDB.insert_completeness_data(db, GP, (0, div(n, 2)), discriminant_bound, true)
     end
+    for s = 1:length(procs)
+      rm("./batch_$(n)_$(i)_$(s).log")
+      rm("./check_$(n)_$(i)_$(s).log")
+      rm("./raw_error_$(n)_$(i)_$(s).log")
+    end
   else
     f_err = open("./errored_$(n)_$(i).log", "w")
     for s = 1:length(procs)
       if !success(started_procs[s])
         println(f_err, s)
       else
-        rm("./batch_$(n)_$(i).log")
-        rm("./check_$(n)_$(i).log")
+        rm("./batch_$(n)_$(i)_$(s).log")
+        rm("./check_$(n)_$(i)_$(s).log")
+        rm("./raw_error_$(n)_$(i)_$(s).log")
       end
     end
     close(f_err)
@@ -179,9 +185,9 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     print(f, idsx)
     close(f)
     if only_real
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real &> raw_error_$(n)_$(i)_$(s).log`)
     else
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc &> raw_error_$(n)_$(i)_$(s).log`)
     end
   end
   ind = 1
@@ -214,6 +220,9 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     for s = 1:length(procs)
       if !success(started_procs[s])
         println(f_err, s)
+      else
+        rm("./batch_$(n)_$(i)_$(s).log")
+        rm("./check_$(n)_$(i)_$(s).log")
       end
     end
     close(f_err)
