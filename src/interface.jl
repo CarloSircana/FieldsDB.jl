@@ -829,6 +829,16 @@ function _get_fields_for_subfields_computation(connection::LibPQ.Connection, deg
   return res  
 end
 
+function _get_fields_for_ramified_primes_computation(connection::LibPQ.Connection)
+  query = "SELECT field_id FROM field WHERE ramified_primes IS NULL"
+  result = Tables.rows(execute(connection, query))
+  res = Vector{DBField}()
+  for x in result
+    push!(res, DBField(connection, x[1]))
+  end
+  return res  
+end
+
 ################################################################################
 #
 #  Helper functions for regulator
@@ -857,3 +867,4 @@ end
 function _regulator_as_decimal(K::AnticNumberField, scale::Int = 20)
   return decimal(_regulator_as_string(K, scale))
 end
+

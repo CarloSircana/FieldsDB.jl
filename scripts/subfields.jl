@@ -213,7 +213,7 @@ function set_subfields(flds::Vector{FieldsDB.DBField}, subfields::Vector{Vector{
   for i = 1:length(flds)-1
     values_string *= "($(flds[i].id),  \$$(i)::bigint[]), "
   end
-  values_string *= "($(flds[end].id), \$$(length(flds))) "
+  values_string *= "($(flds[end].id), \$$(length(flds))::bigint[]) "
   query = " UPDATE field SET subfields = c.subfields FROM (VALUES " 
   query *= values_string 
   query *= " ) as c(field_id, subfields) WHERE field.field_id = c.field_id"
