@@ -109,6 +109,7 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   errored_fields = Int[]
   total_number = div(length(ids), batch_size) +1
   procs = Cmd[]
+  path_to_file = joinpath(@__DIR__, "fields_parallel_process.jl")
   for s = 1:total_number
     idsx_start = (s-1)*batch_size+1
     idsx_end = min(length(ids), s*batch_size)
@@ -117,9 +118,9 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     print(f, idsx)
     close(f)
     if only_real
-      push!(procs, `$(julia_exe) ./.julia/dev/FieldsDB/scripts/fields_parallel_process.jl --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
     else
-      push!(procs, `$(julia_exe) ./.julia/dev/FieldsDB/scripts/fields_parallel_process.jl --n=$n --id=$i --batch=$s --rt=$root_disc`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
     end
   end
   ind = 1
@@ -144,6 +145,9 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     for s = 1:length(procs)
       if !success(started_procs[s])
         println(f_err, s)
+      else
+        rm("./batch_$(n)_$(i).log")
+        rm("./check_$(n)_$(i).log")
       end
     end
     close(f_err)
@@ -166,6 +170,7 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
   errored_fields = Int[]
   total_number = div(length(conds), batch_size)+1
   procs = Cmd[]
+  path_to_file = joinpath(@__DIR__, "fields_abelian_parallel_process.jl")
   for s = 1:total_number
     idsx_start = (s-1)*batch_size+1
     idsx_end = min(length(conds), s*batch_size)
@@ -174,9 +179,9 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     print(f, idsx)
     close(f)
     if only_real
-      push!(procs, `$(julia_exe) ./.julia/dev/FieldsDB/scripts/fields_abelian_parallel_process.jl --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
     else
-      push!(procs, `$(julia_exe) ./.julia/dev/FieldsDB/scripts/fields_abelian_parallel_process.jl --n=$n --id=$i --batch=$s --rt=$root_disc`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
     end
   end
   ind = 1
