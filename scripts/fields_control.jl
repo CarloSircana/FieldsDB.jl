@@ -111,7 +111,7 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     print(f, idsx)
     close(f)
     path_to_file = joinpath(@__DIR__, "fields_parallel_process.jl")
-    push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
+    push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc &> raw_error_$(n)_$(i)_$(s).log`)
   end
   ind = 1
   started_procs = []
@@ -165,7 +165,7 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     print(f, idsx)
     close(f)
     path_to_file = joinpath(@__DIR__, "fields_abelian_parallel_process.jl")
-    push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
+    push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc &> raw_error_$(n)_$(i)_$(s).log`)
   end
   ind = 1
   started_procs = []
