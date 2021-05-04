@@ -53,7 +53,9 @@ function get_batch(db::FieldsDB.LibPQ.Connection, degree::Int, batch_size::Int)
   println("Retrieving fields")
   query = "SELECT field_id, polynomial
            FROM field 
-           WHERE degree = $degree AND subfields IS NULL
+           WHERE degree = $degree AND subfields IS NULL AND (group_id IS NULL OR group_id = ANY(
+             SELECT group_id FROM galois_group WHERE abelian = FALSE
+           ))
            LIMIT $batch_size"
   @time result = Tables.rows(FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt})))
   Qx, x = PolynomialRing(FlintQQ, "x", cached = false)
@@ -187,7 +189,7 @@ function main_loop(db::FieldsDB.LibPQ.Connection, deg::Int, batch_size::Int, res
   #COULD BE OPTIMIZED
   println("Retrieving id from database")
   @time for x in fields_to_insert
-    push!(ids, (x, FieldsDB.find_DBfield(db, x).id))
+    push!(ids, (x, FieldsDB.find_DBfield(db, x, already_in_DB = true).id))
   end
   #Now, I have all the ids I need.
   subfs_ids = Vector{Vector{Int}}()
