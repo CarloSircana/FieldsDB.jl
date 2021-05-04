@@ -20,6 +20,9 @@ function parse_commandline()
       help = "Root discriminant"
       arg_type = Int
       default = 1
+    "--only_real"
+      help = "Only totally real fields flag"
+      action = :store_true
   end
   return parse_args(s)
 end
@@ -31,6 +34,7 @@ function main()
   i = 1
   n_batch = 1
   root_disc = 1
+  only_real = false
 
   for (arg, val) in parsed_args
     println("$arg => $val")
@@ -43,6 +47,8 @@ function main()
       n_batch = val
     elseif arg == "rt"
       root_disc = val
+    elseif arg == "only_real"
+      only_real = val
     end
   end
   
@@ -61,12 +67,12 @@ function main()
   close(f_batch)
   flds = FieldsDB.DBField[FieldsDB.DBField(db, s) for s in ids]
   ctxs = Hecke.FieldsTower[Hecke.field_context(number_field(x)) for x in flds]
-  l = Hecke.fields(n, i, ctxs, discriminant_bound)
+  l = Hecke.fields(n, i, ctxs, discriminant_bound, only_real = only_real)
   flds_to_insert = AnticNumberField[number_field(x) for x in l]
   f = open("./check_$(n)_$(i)_$(n_batch).log", "w")
   println(f, length(flds_to_insert))
   for K in flds_to_insert
-    printlf(f, coefficients(K.pol))
+    println(f, collect(coefficients(K.pol)))
   end
   close(f)
   G = small_group(n, i)

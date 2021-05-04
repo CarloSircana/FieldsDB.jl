@@ -4,13 +4,37 @@
 #
 ################################################################################
 
-function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{fmpz}, deg::Int = -1)
-  query = "SELECT field_id, polynomial, discriminant FROM field WHERE discriminant = ANY(\$1)"
+function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{fmpz}, galois_group::PermGroup)
   discs = BigInt[BigInt(x) for x in discriminants]
-  params = Any[discs]
-  if deg != -1
-    query = query * " AND degree = \$2"
-    push!(params, deg)
+  params = Vector{BigInt}[discs]
+  if degree(galois_group) == 1
+    query = "SELECT field_id, polynomial, discriminant FROM field WHERE discriminant = ANY(\$1)"
+  else
+    id = _find_group_id(galois_group)
+    @assert id !== missing
+    query = "SELECT field_id, polynomial, discriminant FROM field WHERE discriminant = ANY(\$1) AND degree = $(degree(galois_group)) AND (group_id IS NULL OR group_id = $id)"
+  end
+  result = execute(db, query, params, column_types = Dict(:polynomial => Vector{BigInt}, :discriminant => BigInt))
+  data = Tables.rows(result)
+  res = DBField[]
+  Qx = PolynomialRing(FlintQQ, "x")[1]
+  for r in data
+    f = DBField(db, r[1])
+    f.degree = length(r[2])-1
+    f.polynomial = Qx(map(fmpz, r[2]))
+    f.discriminant = fmpz(r[3])
+    push!(res, f)
+  end
+  return res
+end
+
+function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{fmpz}, deg::Int = -1)
+  discs = BigInt[BigInt(x) for x in discriminants]
+  params = Vector{BigInt}[discs]
+  if deg == -1
+    query = "SELECT field_id, polynomial, discriminant FROM field WHERE discriminant = ANY(\$1)"
+  else
+    query = "SELECT field_id, polynomial, discriminant FROM field WHERE discriminant = ANY(\$1) AND degree = $(deg)"
   end
   result = execute(db, query, params, column_types = Dict(:polynomial => Vector{BigInt}, :discriminant => BigInt))
   data = Tables.rows(result)
@@ -253,7 +277,7 @@ function find_group(connection::LibPQ.Connection, id::Int)
   return H
 end
 
-function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField)
+function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField; already_in_DB::Bool = false)
   #First, I check whether the polynomial defining K is in the database.
   if !isdefining_polynomial_nice(K)
     K = simplify(K, cached = false, save_LLL_basis = false)[1]
@@ -275,6 +299,9 @@ function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField)
   lf = load_fields(connection, degree = d, discriminant_range = (disc, disc), signature = sig)
   if isempty(lf)
     return missing
+  end
+  if length(lf) == 1 && already_in_DB
+    return lf[1]
   end
   ck = coefficients(defining_polynomial(K))
   for x in lf

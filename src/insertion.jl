@@ -37,29 +37,25 @@ function insert_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}; g
 end
 
 function insert_fields_split(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup = symmetric_group(1))
-  if !isone(degree(galois_group))
-    flds = _sieve_fields(db, fields, degree(galois_group))
-  else
-    flds = _sieve_fields(db, fields)
-  end
+  flds = _sieve_fields(db, fields, galois_group)
   return _insert_fields(flds, db, galois_group = galois_group)
 end
 
-function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, deg::Int = -1)
+function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup)
   discs = collect(Set(fmpz[discriminant(maximal_order(x)) for x in fields]))
-  if deg == -1
+  if degree(galois_group) != 1
     lf = load_fields_with_discriminant(db, discs)
   else
-    lf = load_fields_with_discriminant(db, discs, deg)
+    lf = load_fields_with_discriminant(db, discs, galois_group)
   end
   #First, we sieve the fields so that we remove the duplicates
   fields_to_insert = AnticNumberField[]
   for x in fields
     dx = degree(x)
-    polx = coefficients(defining_polynomial(x))
+    polx = collect(coefficients(defining_polynomial(x)))
     found = false
     for y in lf
-      if degree(y) == degree(x) && coefficients(defining_polynomial(y)) == polx
+      if degree(y) == degree(x) && collect(coefficients(defining_polynomial(y))) == polx
         found = true
         break
       end
