@@ -14,10 +14,10 @@ function insert_complete_table(db::LibPQ.Connection, fields::Vector{AnticNumberF
   #Finally, we save the completeness data
   have_signature = signature[1] != -1
   if have_signature
-    insert_completeness_data(connection, galois_group, signature, discriminant_bound, GRH)
+    insert_completeness_data(db, galois_group, signature, discriminant_bound, GRH)
   else
     for sg in possible_signatures(galois_group)
-      insert_completeness_data(connection, galois_group, sg, discriminant_bound, GRH)
+      insert_completeness_data(db, galois_group, sg, discriminant_bound, GRH)
     end
   end
   return nothing
@@ -31,14 +31,17 @@ function insert_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}; g
     istart = (i-1)*1000+1
     iend = min(i*1000, length(fields))
     fieldsi = fields[istart:iend]
-    @time insert_fields_split(db, fieldsi, galois_group)
+    insert_fields_split(db, fieldsi, galois_group)
   end
   return nothing
 end
 
 function insert_fields_split(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup = symmetric_group(1))
-  flds = _sieve_fields(db, fields, galois_group)
-  return _insert_fields(flds, db, galois_group = galois_group)
+  println("Sieving fields\n")
+  @time flds = _sieve_fields(db, fields, galois_group)
+  println("Inserting fields\n")
+  @time _insert_fields(flds, db, galois_group = galois_group)
+  return nothing
 end
 
 function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup)

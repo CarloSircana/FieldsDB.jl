@@ -103,6 +103,7 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     lf = load_fields(db, galois_group = G1P, discriminant_range = (-discriminant_bound_subfield, discriminant_bound_subfield))
   end
   ids = Int[x.id for x in lf]
+  close(db)
   @show "Number of fields: $(length(ids))"
   #Now, we create the batch of fields
   julia_exe = Base.julia_cmd()
@@ -118,9 +119,9 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     print(f, idsx)
     close(f)
     if only_real
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real &> raw_error_$(n)_$(i)_$(s).log`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
     else
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc &> raw_error_$(n)_$(i)_$(s).log`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
     end
   end
   ind = 1
@@ -128,22 +129,25 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   while ind <= length(procs) || count(process_exited, started_procs) != length(procs)
     @show number_running_procs = count(process_running, started_procs)
     if ind <= length(procs) && number_running_procs < n_proc
-      push!(started_procs, run(procs[ind], wait = false))
+      push!(started_procs, run(pipeline(procs[ind], stdout = "output_$(n)_$(i)_$(ind).log", stderr = "err_$(n)_$(i)_$(ind).log"),  wait = false))
       ind += 1
     else
       sleep(30)
     end
   end
   if all(success, started_procs)
+    db = FieldsDB.LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag password =" * s)
     GP = FieldsDB.isomorphic_transitive_perm_group(G, n)
     FieldsDB.insert_completeness_data(db, GP, (n, 0), discriminant_bound, true)
     if iseven(n) && !only_real 
       FieldsDB.insert_completeness_data(db, GP, (0, div(n, 2)), discriminant_bound, true)
     end
+    close(db)
     for s = 1:length(procs)
       rm("./batch_$(n)_$(i)_$(s).log")
       rm("./check_$(n)_$(i)_$(s).log")
-      rm("./raw_error_$(n)_$(i)_$(s).log")
+      rm("./output_$(n)_$(i)_$(s).log")
+      rm("./err_$(n)_$(i)_$(s).log")
     end
   else
     f_err = open("./errored_$(n)_$(i).log", "w")
@@ -153,13 +157,12 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
       else
         rm("./batch_$(n)_$(i)_$(s).log")
         rm("./check_$(n)_$(i)_$(s).log")
-        rm("./raw_error_$(n)_$(i)_$(s).log")
+        rm("./output_$(n)_$(i)_$(s).log")
+        rm("./err_$(n)_$(i)_$(s).log")
       end
     end
     close(f_err)
   end
-  close(db)
-
 end
 
 function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int, n_proc::Int, only_real::Bool)
@@ -185,9 +188,9 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     print(f, idsx)
     close(f)
     if only_real
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real &> raw_error_$(n)_$(i)_$(s).log`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
     else
-      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc &> raw_error_$(n)_$(i)_$(s).log`)
+      push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc`)
     end
   end
   ind = 1
@@ -195,7 +198,7 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
   while ind <= length(procs) || count(process_exited, started_procs) != length(procs)
     @show number_running_procs = count(process_running, started_procs)
     if ind <= length(procs) && number_running_procs < n_proc
-      push!(started_procs, run(procs[ind], wait = false))
+      push!(started_procs, run(pipeline(procs[ind], stdout = "output_$(n)_$(i)_$(ind).log", stderr = "err_$(n)_$(i)_$(ind).log"), wait = false))
       ind += 1
     else
       sleep(30)
@@ -215,6 +218,12 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
       FieldsDB.insert_completeness_data(db, GP, (0, div(n, 2)), discriminant_bound, false)
     end
     close(db)
+    for s = 1:length(procs)
+      rm("./batch_$(n)_$(i)_$(s).log")
+      rm("./check_$(n)_$(i)_$(s).log")
+      rm("./err_$(n)_$(i)_$(s).log")
+      rm("./output_$(n)_$(i)_$(s).log")
+    end
   else
     f_err = open("./errored_$(n)_$(i).log", "w")
     for s = 1:length(procs)
@@ -223,6 +232,8 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
       else
         rm("./batch_$(n)_$(i)_$(s).log")
         rm("./check_$(n)_$(i)_$(s).log")
+        rm("./err_$(n)_$(i)_$(s).log")
+        rm("./output_$(n)_$(i)_$(s).log")
       end
     end
     close(f_err)
