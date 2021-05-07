@@ -162,7 +162,7 @@ end
 function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   o = BigInt(order(C))
   str = map(BigInt, snf(C)[1].snf)
-  lf = factor(str[end])
+  lf = factor(exponent(C))
   divs = BigInt[BigInt(x) for x in keys(lf.fac)]
   sort!(divs)
   ranks = Vector{Int}(undef, length(divs))
