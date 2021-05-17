@@ -108,13 +108,18 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
     if isdefining_polynomial_nice(K1)
       K = K1
     else
-      K = simplify(K1)[1]
+      K = simplify(K1, cached = false, save_LLL_basis = false)[1]
       @assert isdefining_polynomial_nice(K)
     end
     d = discriminant(maximal_order(K))
+    lf = collect(keys(factor(d).fac))
+    sort!(lf)
+    lfBigInt = BigInt[BigInt(x) for x in lf]
     real_embs = Hecke.signature(K)[1]
     pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
+    iscm = Hecke.iscm_field(K)[1]
+    too = Hecke.torsion_units_order(K)
     if !iszero(g_id)
       LibPQ.load!(
         (real_embeddings = [real_embs], 
@@ -122,7 +127,10 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
         discriminant = [BigInt(d)], 
         degree = [deg],
         group_id = [g_id],
-        automorphisms_order = [aut_order]
+        automorphisms_order = [aut_order],
+        ramified_primes = [lfBigInt], 
+        cm = [iscm], 
+        torsion_size = [Int(too)]
         ),
         connection,
         "INSERT INTO field (
@@ -131,23 +139,32 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
           discriminant, 
           degree,
           group_id,
-          automorphisms_order
-        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6);",
+          automorphisms_order, 
+          ramified_primes,
+          cm,
+          torsion_size
+        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9);",
       )
     else
       LibPQ.load!(
         (real_embeddings = [real_embs], 
         polynomial = [pol], 
         discriminant = [BigInt(d)], 
-        degree = [deg]
+        degree = [deg],
+        ramified_primes = [lfBigInt], 
+        cm = [iscm], 
+        torsion_size = [Int(too)]
         ),
         connection,
         "INSERT INTO field (
           real_embeddings, 
           polynomial,
           discriminant, 
-          degree
-        ) VALUES (\$1, \$2, \$3, \$4);",
+          degree,
+          ramified_primes,
+          cm,
+          torsion_size
+        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7);",
       )
     end
   end
