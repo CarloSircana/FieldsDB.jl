@@ -32,7 +32,7 @@ function class_numbers_by_degree(db::LibPQ.Connection)
     M[result[1][j], 1] = string(result[2][j])
   end
   for i = 2:11
-    query = "SELECT degree, COUNT(field_id) FROM field WHERE class_group_id = ANY(SELECT class_group_id FROM class_group WHERE group_order BETWEEN $(10^(i-1)+1) AND $(10^i)) GROUP BY degree"
+    query = "SELECT degree, COUNT(field_id) FROM field WHERE class_group_id = ANY(SELECT class_group_id FROM class_group WHERE group_order BETWEEN $(10^(i-2)+1) AND $(10^(i-1))) GROUP BY degree"
     result = Tables.columntable(execute(db, query))
     for j = 1:length(result[1])
       M[result[1][j], i] = string(result[2][j])
@@ -46,10 +46,48 @@ function class_numbers_by_degree(db::LibPQ.Connection)
   header2[1] = "h = 1"
   header3[1] = " "
   for i = 2:12
-    header1[i] = "10^$(i-1)"
+    header1[i] = "10^$(i-2)"
     header2[i] = "< h  <="
-    header3[i] = "10^$i"
+    header3[i] = "10^$(i-1)"
   end
   pretty_table(t, header = (header1, header2, header3), row_names = ["$i" for i in 1:48])
   return nothing
+end
+
+function _missing_class_groups_by_degree(db::LibPQ.Connection)
+  query = "SELECT degree, COUNT(*) FROM field WHERE class_group_id IS NULL GROUP BY degree"
+  result = Tables.columntable(execute(db, query))
+  pretty_table(result)
+  return nothing
+end
+
+function _missing_subfields_by_degree(db::LibPQ.Connection)
+  query = "SELECT degree, COUNT(*) FROM field WHERE subfields IS NULL GROUP BY degree"
+  result = Tables.columntable(execute(db, query))
+  pretty_table(result)
+  return nothing
+end
+
+function minimal_discriminant(db::LibPQ.Connection, GP::PermGroup, signature::Tuple{Int, Int})
+  id = _find_group_id(db, GP)
+  if id === missing
+    error("Group not in database")
+  end
+  query1 = "SELECT MIN(ABS(discriminant)) FROM field where group_id = $id"
+  min_disc = Tables.columtable(execute(db, query))[1][1]
+  ps = possible_signatures(GP)
+  b = fmpz(0)
+  for s in ps
+    cd = FieldsDB.find_completeness_data(db, GP, s)
+    b = min(b, max(cd))
+    if b < min_disc
+      break
+    end
+  end
+  print("The minimal discriminant is $min_disc")
+  if b < min_disc
+    println(" (not proven)")
+  else
+    println(" (proven)")
+  end
 end

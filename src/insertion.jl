@@ -14,10 +14,10 @@ function insert_complete_table(db::LibPQ.Connection, fields::Vector{AnticNumberF
   #Finally, we save the completeness data
   have_signature = signature[1] != -1
   if have_signature
-    insert_completeness_data(connection, galois_group, signature, discriminant_bound, GRH)
+    insert_completeness_data(db, galois_group, signature, discriminant_bound, GRH)
   else
     for sg in possible_signatures(galois_group)
-      insert_completeness_data(connection, galois_group, sg, discriminant_bound, GRH)
+      insert_completeness_data(db, galois_group, sg, discriminant_bound, GRH)
     end
   end
   return nothing
@@ -31,14 +31,17 @@ function insert_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}; g
     istart = (i-1)*1000+1
     iend = min(i*1000, length(fields))
     fieldsi = fields[istart:iend]
-    @time insert_fields_split(db, fieldsi, galois_group)
+    insert_fields_split(db, fieldsi, galois_group)
   end
   return nothing
 end
 
 function insert_fields_split(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup = symmetric_group(1))
-  flds = _sieve_fields(db, fields, galois_group)
-  return _insert_fields(flds, db, galois_group = galois_group)
+  println("Sieving fields\n")
+  @time flds = _sieve_fields(db, fields, galois_group)
+  println("Inserting fields\n")
+  @time _insert_fields(flds, db, galois_group = galois_group)
+  return nothing
 end
 
 function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup)
@@ -105,13 +108,18 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
     if isdefining_polynomial_nice(K1)
       K = K1
     else
-      K = simplify(K1)[1]
+      K = simplify(K1, cached = false, save_LLL_basis = false)[1]
       @assert isdefining_polynomial_nice(K)
     end
     d = discriminant(maximal_order(K))
+    lf = collect(keys(factor(d).fac))
+    sort!(lf)
+    lfBigInt = BigInt[BigInt(x) for x in lf]
     real_embs = Hecke.signature(K)[1]
     pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
     deg = degree(K)
+    iscm = Hecke.iscm_field(K)[1]
+    too = Hecke.torsion_units_order(K)
     if !iszero(g_id)
       LibPQ.load!(
         (real_embeddings = [real_embs], 
@@ -119,7 +127,10 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
         discriminant = [BigInt(d)], 
         degree = [deg],
         group_id = [g_id],
-        automorphisms_order = [aut_order]
+        automorphisms_order = [aut_order],
+        ramified_primes = [lfBigInt], 
+        cm = [iscm], 
+        torsion_size = [Int(too)]
         ),
         connection,
         "INSERT INTO field (
@@ -128,23 +139,32 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
           discriminant, 
           degree,
           group_id,
-          automorphisms_order
-        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6);",
+          automorphisms_order, 
+          ramified_primes,
+          cm,
+          torsion_size
+        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9);",
       )
     else
       LibPQ.load!(
         (real_embeddings = [real_embs], 
         polynomial = [pol], 
         discriminant = [BigInt(d)], 
-        degree = [deg]
+        degree = [deg],
+        ramified_primes = [lfBigInt], 
+        cm = [iscm], 
+        torsion_size = [Int(too)]
         ),
         connection,
         "INSERT INTO field (
           real_embeddings, 
           polynomial,
           discriminant, 
-          degree
-        ) VALUES (\$1, \$2, \$3, \$4);",
+          degree,
+          ramified_primes,
+          cm,
+          torsion_size
+        ) VALUES (\$1, \$2, \$3, \$4, \$5, \$6, \$7);",
       )
     end
   end
@@ -159,7 +179,7 @@ end
 function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   o = BigInt(order(C))
   str = map(BigInt, snf(C)[1].snf)
-  lf = factor(str[end])
+  lf = factor(exponent(C))
   divs = BigInt[BigInt(x) for x in keys(lf.fac)]
   sort!(divs)
   ranks = Vector{Int}(undef, length(divs))

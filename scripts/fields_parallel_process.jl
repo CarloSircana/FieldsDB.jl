@@ -67,6 +67,7 @@ function main()
   close(f_batch)
   flds = FieldsDB.DBField[FieldsDB.DBField(db, s) for s in ids]
   ctxs = Hecke.FieldsTower[Hecke.field_context(number_field(x)) for x in flds]
+  close(db)
   l = Hecke.fields(n, i, ctxs, discriminant_bound, only_real = only_real)
   flds_to_insert = AnticNumberField[number_field(x) for x in l]
   f = open("./check_$(n)_$(i)_$(n_batch).log", "w")
@@ -77,6 +78,7 @@ function main()
   close(f)
   G = small_group(n, i)
   GP = FieldsDB.isomorphic_transitive_perm_group(G, n)
+  db = FieldsDB.LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag password =" * s)
   FieldsDB.insert_fields(db, flds_to_insert, galois_group = GP)
   close(db)
 end

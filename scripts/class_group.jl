@@ -53,9 +53,16 @@ function get_batch(db::FieldsDB.LibPQ.Connection, degree::Int, batch_size::Int)
   println("Retrieving fields")
   query = "SELECT field_id, polynomial
            FROM field 
-           WHERE degree = $degree AND class_group_id IS NULL
+           WHERE degree = $degree AND class_group_id IS NULL AND random() < 0.1
            LIMIT $batch_size"
   @time result = Tables.rows(FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt})))
+  if length(result) < batch_size
+    query = "SELECT field_id, polynomial
+           FROM field 
+           WHERE degree = $degree AND class_group_id IS NULL
+           LIMIT $batch_size"
+    @time result = Tables.rows(FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt})))
+  end
   Qx, x = PolynomialRing(FlintQQ, "x", cached = false)
   res = Vector{FieldsDB.DBField}(undef, batch_size)
   ind = 1
