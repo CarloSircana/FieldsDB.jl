@@ -116,7 +116,10 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
     sort!(lf)
     lfBigInt = BigInt[BigInt(x) for x in lf]
     real_embs = Hecke.signature(K)[1]
-    pol = BigInt[BigInt(numerator(coeff(K.pol, i))) for i = 0:degree(K)]
+    pol = Vector{BigInt}(undef, degree(K)+1)
+    for i = 0:degree(K)
+      pol[i+1] = BigInt(numerator(coeff(K.pol, i)))
+    end
     deg = degree(K)
     iscm = Hecke.iscm_field(K)[1]
     too = Hecke.torsion_units_order(K)
