@@ -176,6 +176,41 @@ function insert_field(connection::LibPQ.Connection, K::AnticNumberField)
   return insert_fields(connection, AnticNumberField[K])
 end
 
+
+function insert_class_groups(connection::LibPQ.Connection, groups::Vector{GrpAbFinGen})
+  execute(connection, "BEGIN;")
+  for C in groups
+    o = BigInt(order(C))
+    str = map(BigInt, snf(C)[1].snf)
+    lf = factor(exponent(C))
+    divs = Vector{BigInt}(undef, length(lf))
+    for (i, x) in enumerate(keys(lf.fac))
+      divs[i] = BigInt(x)
+    end
+    sort!(divs)
+    ranks = Vector{Int}(undef, length(divs))
+    for i = 1:length(divs)
+      ranks[i] = rank(C, divs[i])
+    end
+    LibPQ.load!(
+      (group_order = [o], 
+      structure = [str],
+      prime_divisors = [divs],
+      ranks = [ranks], 
+      ),
+      connection,
+      "INSERT INTO class_group (
+        group_order, 
+        structure,
+        prime_divisors,
+        ranks
+      ) VALUES (\$1, \$2, \$3, \$4);"
+    )
+  end
+  execute(connection, "COMMIT;")
+  return nothing
+end
+
 function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   o = BigInt(order(C))
   str = map(BigInt, snf(C)[1].snf)
@@ -184,14 +219,7 @@ function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   sort!(divs)
   ranks = Vector{Int}(undef, length(divs))
   for i = 1:length(divs)
-    ind = 0
-    for j = 1:length(str)
-      if iszero(mod(str[j], divs[i]))
-        ind = j
-        break
-      end
-    end
-    ranks[i] = length(str)-ind+1
+    ranks[i] = rank(C, divs[i])
   end
   LibPQ.load!(
     (group_order = [o], 
