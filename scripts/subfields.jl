@@ -53,9 +53,7 @@ function get_batch(db::FieldsDB.LibPQ.Connection, degree::Int, batch_size::Int)
   println("Retrieving fields")
   query = "SELECT field_id, polynomial
            FROM field 
-           WHERE degree = $degree AND subfields IS NULL AND (group_id IS NULL OR group_id = ANY(
-             SELECT group_id FROM galois_group WHERE abelian = FALSE
-           ))
+           WHERE degree = $degree AND subfields IS NULL
            LIMIT $batch_size"
   @time result = Tables.rows(FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt})))
   Qx, x = PolynomialRing(FlintQQ, "x", cached = false)

@@ -50,13 +50,10 @@ function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vect
   return res
 end
 
-
-function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
-                         signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
-                         galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
-                         class_group_structure::Vector{fmpz} = fmpz[-1], 
-                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}(), only_count::Type{Val{T}} = Val{false}) where T
-
+function _set_query(connection, degree::Int, degree_range::UnitRange{Int}, discriminant_range::Tuple{fmpz, fmpz}, 
+                    signature::Tuple{Int, Int}, unramified_outside::Vector{fmpz}, ramified_at::Vector{fmpz},
+                    galois_group::PermGroup, class_number::Int, 
+                    class_group_structure::Vector{fmpz}, class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}})
 
   parameters = String[]
   values = []
@@ -100,27 +97,25 @@ function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_rang
   if !isone(order(galois_group))
     id_group = _find_group_id(connection, galois_group)
     if id_group === missing
-      return DBField[]
+      id_group = -1
     end
     push!(parameters, "group_id = $(id_group)")
   end
   if class_group_structure[1] != -1
     id_class_group = _find_class_group_id(connection, abelian_group(class_group_structure))
-    if id_class_group !== missing
-      push!(parameters, "class_group_id = $(id_class_group)")
+    if id_class_group === missing
+      class_group_id = -1
     end
+    push!(parameters, "class_group_id = $(id_class_group)")
   end
   if class_number != -1
     abgroups = abelian_groups(class_number)
     class_group_ids = Vector{Int}()
     for C in abgroups
       idC = _find_class_group_id(connection, C)
-      if idC !== missing
-        push!(class_group_ids, idC)
+      if idC === missing
+        push!(class_group_ids, -1)
       end
-    end
-    if isempty(class_group_ids)
-      return Vector{DBField}()
     end
     push!(parameters, "class_group_id = ANY( \$$(ind) ) ")
     push!(values, class_group_ids)
@@ -132,12 +127,18 @@ function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_rang
     push!(values, ids_class_group)
     ind += 1
   end
-  #Now, I can do the query
-  if only_count == Val{true}
-    query = "SELECT COUNT(*) FROM field"
-  else
-    query = "SELECT field_id FROM field"
-  end
+  return parameters, values, ind
+end
+
+function count_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
+                      signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
+                      galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
+                      class_group_structure::Vector{fmpz} = fmpz[-1], 
+                      class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}())
+
+  parameters, values, ind = _set_query(connection, degree, degree_range, discriminant_range, signature, unramified_outside, ramified_at, galois_group, 
+                                      class_number, class_group_structure,  class_group_ranks_range)
+  query = "SELECT COUNT(*) FROM field"
   if !isempty(parameters)
     query *= " WHERE "
     for i = 1:length(parameters)-1
@@ -147,9 +148,30 @@ function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_rang
   end
   result = execute(connection, query, values)
   data1 = columntable(result)
-  if only_count == Val{true}
-    return data1[1][1]::Int
+  return data1[1][1]::Int
+end
+
+
+function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
+                         signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
+                         galois_group::PermGroup = symmetric_group(1), class_number::Int = -1, 
+                         class_group_structure::Vector{fmpz} = fmpz[-1], 
+                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}())
+
+
+  parameters, values, ind = _set_query(connection, degree, degree_range, discriminant_range, signature, unramified_outside, ramified_at, galois_group, 
+                                      class_number, class_group_structure,  class_group_ranks_range)
+  #Now, I can do the query
+  query = "SELECT field_id FROM field"
+  if !isempty(parameters)
+    query *= " WHERE "
+    for i = 1:length(parameters)-1
+      query = query * parameters[i] * " AND "
+    end
+    query =  query * parameters[end]
   end
+  result = execute(connection, query, values)
+  data1 = columntable(result)
   data = data1[1]
   l = length(data)::Int
   fields = Vector{DBField}(undef, l)
@@ -164,9 +186,8 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
   id = transitive_group_identification(G)
   if id != -1
     #GREAT! Unique identification.
-    query = "SELECT group_id FROM galois_group WHERE degree = \$1 AND transitive_group_id = \$2"
-    values = Int[d, id]
-    result = execute(connection, query, values, column_types = Dict(:group_id => Int64))
+    query = "SELECT group_id FROM galois_group WHERE degree = $d AND transitive_group_id = $id"
+    result = execute(connection, query, column_types = Dict(:group_id => Int64))
     data = columntable(result)[1][1]
     return data::Union{Missing, Int}
   end
@@ -174,16 +195,15 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
   if o < 2000 && o != 1024
     #Now, I try the small group id
     id = small_group_identification(G)
-    query = "SELECT group_id FROM galois_group WHERE degree = \$1 AND group_order = \$2 AND small_group_id = \$3"
-    values = [d, o, id[2]]
-    result = execute(connection, query, values, column_types = Dict(:group_id => Int64))
+    query = "SELECT group_id FROM galois_group WHERE degree = $d AND group_order = $o AND small_group_id = $(id[2])"
+    result = execute(connection, query, column_types = Dict(:group_id => Int64))
     data = columntable(result)[1][1]
     return data::Union{Missing, Int}
   end
   #Sad. That's quite hard now. I have to search for all the groups
   #with a given order and check isomorphism.
-  query = "SELECT group_id, generators FROM galois_group WHERE degree = \$1 AND group_order = \$2"
-  result = execute(connection, query, [d, o], column_types = Dict(:group_id => Int64, :generators => String))
+  query = "SELECT group_id, generators FROM galois_group WHERE degree = $d AND group_order = $o"
+  result = execute(connection, query, column_types = Dict(:group_id => Int64, :generators => String))
   data = Tables.rows(result)
   S = symmetric_group(d)
   for r in data
