@@ -112,12 +112,6 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   procs = Cmd[]
   path_to_file = joinpath(@__DIR__, "fields_parallel_process.jl")
   for s = 1:total_number
-    idsx_start = (s-1)*batch_size+1
-    idsx_end = min(length(ids), s*batch_size)
-    idsx = ids[idsx_start:idsx_end]
-    f = open("./batch_$(n)_$(i)_$(s).log", "w")
-    print(f, idsx)
-    close(f)
     if only_real
       push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
     else
@@ -127,11 +121,26 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   ind = 1
   started_procs = []
   while ind <= length(procs) || count(process_exited, started_procs) != length(procs)
-    @show number_running_procs = count(process_running, started_procs)
+    number_running_procs = count(process_running, started_procs)
+    println("Running: $(number_running_procs), Done: $(count(process_exited, started_procs)), Total number: $(length(procs))")
     if ind <= length(procs) && number_running_procs < n_proc
+      idsx_start = (ind-1)*batch_size+1
+      idsx_end = min(length(ids), ind*batch_size)
+      idsx = ids[idsx_start:idsx_end]
+      f = open("./batch_$(n)_$(i)_$(ind).log", "w")
+      print(f, idsx)
+      close(f)
       push!(started_procs, run(pipeline(procs[ind], stdout = "output_$(n)_$(i)_$(ind).log", stderr = "err_$(n)_$(i)_$(ind).log"),  wait = false))
       ind += 1
     else
+      for j = 1:ind-1
+        if !process_running(started_procs[j]) && success(started_procs[j]) && isfile("./batch_$(n)_$(i)_$(j).log")
+          rm("./batch_$(n)_$(i)_$(j).log")
+          rm("./check_$(n)_$(i)_$(j).log")
+          rm("./err_$(n)_$(i)_$(j).log")
+          rm("./output_$(n)_$(i)_$(j).log")
+        end
+      end
       sleep(30)
     end
   end
@@ -144,6 +153,9 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     end
     close(db)
     for s = 1:length(procs)
+      if !isfile("./batch_$(n)_$(i)_$(s).log")
+        continue
+      end
       rm("./batch_$(n)_$(i)_$(s).log")
       rm("./check_$(n)_$(i)_$(s).log")
       rm("./output_$(n)_$(i)_$(s).log")
@@ -154,7 +166,7 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     for s = 1:length(procs)
       if !success(started_procs[s])
         println(f_err, s)
-      else
+      elseif isfile("./batch_$(n)_$(i)_$(s).log")
         rm("./batch_$(n)_$(i)_$(s).log")
         rm("./check_$(n)_$(i)_$(s).log")
         rm("./output_$(n)_$(i)_$(s).log")
@@ -181,12 +193,6 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
   procs = Cmd[]
   path_to_file = joinpath(@__DIR__, "fields_abelian_parallel_process.jl")
   for s = 1:total_number
-    idsx_start = (s-1)*batch_size+1
-    idsx_end = min(length(conds), s*batch_size)
-    idsx = conds[idsx_start:idsx_end]
-    f = open("./batch_$(n)_$(i)_$(s).log", "w")
-    print(f, idsx)
-    close(f)
     if only_real
       push!(procs, `$(julia_exe) $(path_to_file) --n=$n --id=$i --batch=$s --rt=$root_disc --only_real`)
     else
@@ -196,11 +202,26 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
   ind = 1
   started_procs = []
   while ind <= length(procs) || count(process_exited, started_procs) != length(procs)
-    @show number_running_procs = count(process_running, started_procs)
+    number_running_procs = count(process_running, started_procs)
+    println("Running: $(number_running_procs), Done: $(count(process_exited, started_procs)), Total number: $(length(procs))")
     if ind <= length(procs) && number_running_procs < n_proc
+      idsx_start = (ind-1)*batch_size+1
+      idsx_end = min(length(conds), ind*batch_size)
+      idsx = conds[idsx_start:idsx_end]
+      f = open("./batch_$(n)_$(i)_$(ind).log", "w")
+      print(f, idsx)
+      close(f)
       push!(started_procs, run(pipeline(procs[ind], stdout = "output_$(n)_$(i)_$(ind).log", stderr = "err_$(n)_$(i)_$(ind).log"), wait = false))
       ind += 1
     else
+      for j = 1:ind-1
+        if !process_running(started_procs[j]) && success(started_procs[j]) && isfile("./batch_$(n)_$(i)_$(j).log")
+          rm("./batch_$(n)_$(i)_$(j).log")
+          rm("./check_$(n)_$(i)_$(j).log")
+          rm("./err_$(n)_$(i)_$(j).log")
+          rm("./output_$(n)_$(i)_$(j).log")
+        end
+      end
       sleep(30)
     end
   end
@@ -219,6 +240,9 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     end
     close(db)
     for s = 1:length(procs)
+      if !isfile("./batch_$(n)_$(i)_$(s).log")
+        continue
+      end
       rm("./batch_$(n)_$(i)_$(s).log")
       rm("./check_$(n)_$(i)_$(s).log")
       rm("./err_$(n)_$(i)_$(s).log")
@@ -229,7 +253,7 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
     for s = 1:length(procs)
       if !success(started_procs[s])
         println(f_err, s)
-      else
+      elseif isfile("./batch_$(n)_$(i)_$(s).log")
         rm("./batch_$(n)_$(i)_$(s).log")
         rm("./check_$(n)_$(i)_$(s).log")
         rm("./err_$(n)_$(i)_$(s).log")
