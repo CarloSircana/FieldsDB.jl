@@ -36,7 +36,7 @@ function _construct_matrix(tb, G, db)
     M[i, 3] = string(signatr)
     e = Int(round(log(10, tb[2][i])))
     M[i, 4] = string("~10^$e")
-    M[i, 5] = string(load_fields(db, galois_group = G, signature = signatr, only_count = Val{true}))
+    M[i, 5] = string(count_fields(db, galois_group = G, signature = signatr))
   end
   return M
 end
@@ -64,7 +64,7 @@ function completeness_data(db::LibPQ.Connection, G::PermGroup)
     return nothing
   end
   t = Tables.table(M)
-  pretty_table(t, ["Group", "GRH", "Signature", "Discriminant bound", "Number of fields"], compact_printing = true)
+  pretty_table(t, ["Group", "GRH", "Signature", "Discriminant bound", "Number of fields"], compact_printing = true, crop = :none)
   return nothing
 end
 
@@ -89,7 +89,7 @@ function completeness_data(db::LibPQ.Connection, degree::Int)
     M = vcat(M, _construct_matrix(db, G))
   end
   t = Tables.table(M)
-  pretty_table(t, ["Group", "GRH", "Signature", "Discriminant bound", "Number of fields"], compact_printing = true)
+  pretty_table(t, ["Group", "GRH", "Signature", "Discriminant bound", "Number of fields"], compact_printing = true, crop = :none)
   return nothing
 end
 

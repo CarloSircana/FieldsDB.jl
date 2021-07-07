@@ -15,7 +15,7 @@ function fields_by_degree(db::LibPQ.Connection)
     M[i, 3] = string(result[3][i])
   end
   t = Tables.table(M)
-  pretty_table(t, ["Degree", "Signature", "Number of fields"])
+  pretty_table(t, ["Degree", "Signature", "Number of fields"], crop = :none)
   return nothing
 end
 
@@ -50,21 +50,21 @@ function class_numbers_by_degree(db::LibPQ.Connection)
     header2[i] = "< h  <="
     header3[i] = "10^$(i-1)"
   end
-  pretty_table(t, header = (header1, header2, header3), row_names = ["$i" for i in 1:48])
+  pretty_table(t, header = (header1, header2, header3), row_names = ["$i" for i in 1:48], crop = :none)
   return nothing
 end
 
 function _missing_class_groups_by_degree(db::LibPQ.Connection)
   query = "SELECT degree, COUNT(*) FROM field WHERE class_group_id IS NULL GROUP BY degree"
   result = Tables.columntable(execute(db, query))
-  pretty_table(result)
+  pretty_table(result, crop = :none)
   return nothing
 end
 
 function _missing_subfields_by_degree(db::LibPQ.Connection)
   query = "SELECT degree, COUNT(*) FROM field WHERE subfields IS NULL GROUP BY degree"
   result = Tables.columntable(execute(db, query))
-  pretty_table(result)
+  pretty_table(result, crop = :none)
   return nothing
 end
 
