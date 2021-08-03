@@ -222,7 +222,7 @@ function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   sort!(divs)
   ranks = Vector{Int}(undef, length(divs))
   for i = 1:length(divs)
-    ranks[i] = rank(C, divs[i])
+    ranks[i] = rank(C, fmpz(divs[i]))
   end
   LibPQ.load!(
     (group_order = [o], 
