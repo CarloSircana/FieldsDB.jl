@@ -168,9 +168,9 @@ end
 
 
 function _remove_completeness_data(db::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
-  gid = _find_group_id(connection, G)
+  gid = _find_group_id(db, G)
   @assert gid !== missing
   real_embeddings = signature[1]
-  query = "DELETE FROM completeness WHERE group_id = $(group_id)::int AND real_embeddings = $(real_embeddings)::int"
+  query = "DELETE FROM completeness WHERE group_id = $(gid)::int AND real_embeddings = $(real_embeddings)::int"
   execute(db, query)
 end
