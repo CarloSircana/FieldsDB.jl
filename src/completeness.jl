@@ -23,6 +23,28 @@ function _print_group(db, G::PermGroup)
   return "Degree $(d) DBid: $(_find_group_id(db, G))"
 end
 
+function _sort_groups!(db, Gs::Vector{PermGroup})
+  ltt = function(G)
+    d = degree(G)
+    try id = transitive_group_identification(G)
+      if id != -1
+        return d * 100000 + id * 10000
+      end
+    catch e 
+      rethrow(e)
+    end
+
+    try 
+      id1 = small_group_identification(G)
+      return d * 10000000 + id1[2] * 1000000
+    catch e
+      rethrow(e)
+    end
+    return _find_group_id(db, G)
+  end
+  return sort!(Gs, by = ltt)
+end
+
 function _construct_matrix(tb, G, db)
   #Now, I need to organize the table for the pretty printing.
   M = Array{String, 2}(undef, length(tb[1]), 5)
@@ -84,6 +106,7 @@ function completeness_data(db::LibPQ.Connection, degree::Int)
       push!(groups, r)
     end
   end
+  groups = _sort_groups!(db, groups)
   M = Array{String, 2}(undef, 0, 5)
   for G in groups
     M = vcat(M, _construct_matrix(db, G))
@@ -165,7 +188,6 @@ function insert_completeness_data(connection::LibPQ.Connection, group::PermGroup
   )
   return nothing
 end
-
 
 function _remove_completeness_data(db::LibPQ.Connection, G::PermGroup, signature::Tuple{Int, Int})
   gid = _find_group_id(db, G)
