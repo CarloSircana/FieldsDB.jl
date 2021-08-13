@@ -12,6 +12,9 @@ function parse_commandline()
       help = "Number of fields per process"
       arg_type = Int
       default = 1
+    "--simplify"
+      help = "Simplify the fields or not"
+      action = :store_true
   end
   return parse_args(s)
 end
@@ -21,6 +24,7 @@ function main()
 
   deg = 1
   batch_size = 1
+  simplify = false
 
   for (arg, val) in parsed_args
     println("$arg => $val")
@@ -28,6 +32,8 @@ function main()
       deg = val
     elseif arg == "batch_size"
       batch_size = val
+    elseif arg == "simplify"
+      simplify = true
     end
   end
 
@@ -41,7 +47,7 @@ function main()
   println("Batch number $cnt")
   batch = get_batch(db, deg, batch_size)
   while !isempty(batch)
-    main_loop(db, deg, batch_size, batch)
+    main_loop(db, deg, batch_size, batch, simplify)
     cnt += 1
     println("Batch number $cnt")
     batch = get_batch(db, deg, batch_size)
@@ -75,23 +81,43 @@ function get_batch(db::FieldsDB.LibPQ.Connection, degree::Int, batch_size::Int)
 end
 
 
-function main_loop(db::FieldsDB.LibPQ.Connection, deg::Int, batch_size::Int, res::Vector{FieldsDB.DBField})
+function main_loop(db::FieldsDB.LibPQ.Connection, deg::Int, batch_size::Int, res::Vector{FieldsDB.DBField}, simplify::Bool)
   flds = AnticNumberField[number_field(x) for x in res]
-  for K in flds
+  clgps = GrpAbFinGen[]
+  for i in 1:length(flds)
+    K = flds[i]
     println(K.pol)
     automorphisms(K)
+    if simplify
+      lll(maximal_order(K))
+      K1 = Hecke.simplify(K, cached = false)[1]
+      nbK = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K)))
+      nbK1 = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K1)))
+      if nbK1 < nbK
+        println("Found a better defining polynomial")
+        println(defining_polynomial(K1))
+        FieldsDB.set_polynomial(res[i], defining_polynomial(K1))
+        K = K1
+      end
+    end
+
+    c = nothing
+
     if deg > 30
       OK = lll(maximal_order(K))
       fl, N = Hecke.norm_relation(K, small_degree = false)
       if fl
-        @time Hecke.NormRel.class_group_via_brauer(OK, N)
+        @time c, = Hecke.NormRel.class_group_via_brauer(OK, N)
       else
-        @time class_group(K)
+        @time c, = class_group(K)
       end
     else
-      @time class_group(K)
+      @time c, = class_group(K)
     end
+    push!(clgps, c)
   end
+
+  @assert length(flds) == length(clgps)
 
   #First, I set the regulators.
   println("Setting regulators")
@@ -108,7 +134,7 @@ function main_loop(db::FieldsDB.LibPQ.Connection, deg::Int, batch_size::Int, res
   #TODO: Put more thought in it.
   println("Setting class groups")
   @time for i = 1:length(res)
-    FieldsDB.set_class_group(res[i], class_group(flds[i])[1])
+    FieldsDB.set_class_group(res[i], clgps[i])
   end
   return nothing
 end
