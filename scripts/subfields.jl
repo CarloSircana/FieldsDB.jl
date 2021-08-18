@@ -75,7 +75,7 @@ function _get_subfields(flds::Vector{AnticNumberField}, res::Vector{FieldsDB.DBF
     OK1 = lll(maximal_order(K1))
     K = simplify(K1, cached = false)[1]
     nbK = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K)))
-    nbK1 = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K)))
+    nbK1 = sum(nbits(numerator(x)) for x in coefficients(defining_polynomial(K1)))
     if nbK < nbK1
       FieldsDB.set_polynomial(res[i], defining_polynomial(K))
     end
@@ -221,3 +221,4 @@ function set_subfields(flds::Vector{FieldsDB.DBField}, subfields::Vector{Vector{
 end
 
 main()
+
