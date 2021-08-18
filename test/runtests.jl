@@ -10,7 +10,7 @@ else
 end
 
   #We create temporary tables.
-  execute(db, """
+  FieldsDB.LibPQ.execute(db, """
     CREATE TEMP TABLE class_group(
       class_group_id SERIAL,
       group_order NUMERIC NOT NULL,

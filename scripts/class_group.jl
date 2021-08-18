@@ -36,7 +36,7 @@ function main()
     throw(error("Password not found!"))
   end
   s = readline(file)
-  db = FieldsDB.LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag password =" * s)
+  db = FieldsDB.fields_database(s)
   cnt = 1
   println("Batch number $cnt")
   batch = get_batch(db, deg, batch_size)
@@ -55,23 +55,21 @@ function get_batch(db::FieldsDB.LibPQ.Connection, degree::Int, batch_size::Int)
            FROM field 
            WHERE degree = $degree AND class_group_id IS NULL AND random() < 0.1
            LIMIT $batch_size"
-  @time result = Tables.rows(FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt})))
+  @time result = FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt}))
   if length(result) < batch_size
     query = "SELECT field_id, polynomial
            FROM field 
            WHERE degree = $degree AND class_group_id IS NULL
            LIMIT $batch_size"
-    @time result = Tables.rows(FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt})))
+    @time result = FieldsDB.LibPQ.execute(db, query, column_types = Dict(:polynomial => Vector{BigInt}))
   end
   Qx, x = PolynomialRing(FlintQQ, "x", cached = false)
-  res = Vector{FieldsDB.DBField}(undef, batch_size)
-  ind = 1
-  for x in result
-    res[ind] = FieldsDB.DBField(db, x[1])
-    res[ind].polynomial = Qx(map(fmpz, x[2]))
-    ind += 1
+  res = Vector{FieldsDB.DBField}(undef, length(result))
+  for i = 1:length(result)
+    res[i] = FieldsDB.DBField(db, result[i, 1])
+    res[i].polynomial = Qx(map(fmpz, result[i, 2]))
   end
-  return res[1:ind-1]
+  return res
 end
 
 

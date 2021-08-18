@@ -1,3 +1,5 @@
+export completeness_data
+
 ################################################################################
 #
 #  Completeness data
@@ -16,7 +18,7 @@ function _print_group(db, G::PermGroup)
   end
   try 
     id1 = small_group_identification(G)
-    return "Degree $(d) SGid: $(id1)"
+    return "SmallGrp$(id1)"
   catch e
     
   end
@@ -47,18 +49,48 @@ end
 
 function _construct_matrix(tb, G, db)
   #Now, I need to organize the table for the pretty printing.
-  M = Array{String, 2}(undef, length(tb[1]), 5)
+  rows_to_consider = Int[]
+  dict = Dict{Tuple{Int, Int}, Vector{Tuple{Bool, fmpz}}}()
+  for i = 1:length(tb)
+    sign = (tb[i, 3], div(degree(G)-tb[i, 3], 2))
+    fl = tb[i, 1]
+    bound = fmpz(tb[i, 2])
+    if haskey(dict, sign)
+      if dict[sign][1][1]
+        if dict[sign][1][2] <= bound
+          dict[sign][1] = (fl, bound)
+        else
+          push!(dict[sign], (fl, bound))
+        end
+      else
+        if dict[sign][1][2] <= bound
+          push!(dict[sign], (fl, bound))
+        end
+      end
+    else
+      dict[sign] = Tuple{Bool, fmpz}[(fl, bound)]
+    end
+  end
+  to_print = [(sign, GRH, bound) for (sign, y) in dict for (GRH, bound) in y]
+  M = Array{String, 2}(undef, length(to_print), 5)
   M[1, 1] = _print_group(db, G)
-  for i = 1:length(tb[1])
+  for i = 1:length(to_print)
     if i > 1
       M[i, 1] = ""
     end
-    M[i, 2] = string(tb[1][i])
-    signatr = (tb[3][i], div(degree(G)-tb[3][i], 2))
-    M[i, 3] = string(signatr)
-    e = Int(round(log(10, tb[2][i])))
-    M[i, 4] = string("~10^$e")
-    M[i, 5] = string(count_fields(db, galois_group = G, signature = signatr))
+    M[i, 2] = string(to_print[i][2])
+    M[i, 3] = string(to_print[i][1])
+    disc = to_print[i][3]
+    e, n = ispower(disc)
+    s = string(n)
+    if e > 1
+      s *= "^"*string(e)
+    else
+      f = factor(disc)
+      s = string(f)
+    end
+    M[i, 4] = s
+    M[i, 5] = string(count_fields(db, galois_group = G, signature = to_print[i][1]))
   end
   return M
 end
@@ -67,13 +99,20 @@ function _construct_matrix(db::LibPQ.Connection, G::PermGroup)
   id = _find_group_id(db, G)
   query = "SELECT GRH, discriminant_bound, real_embeddings FROM completeness WHERE group_id = \$1"
   result = execute(db, query, [id], column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt, :real_embeddings => Int))
-  tb = columntable(result)
-  if tb[1][1] === missing
+  if isempty(result)
     return Array{String, 2}(undef, 0, 5)
   end
-  return _construct_matrix(tb, G, db)
+  return _construct_matrix(result, G, db)
 end
 
+@doc Markdown.doc"""
+    completeness_data(db::Database, G::PermGroup)
+
+Prints a table giving information on the completeness of the table of fields with Galois group G.
+For each possible signature, the discriminant bound column shows the value for which it has been proven that
+the table is complete. The GRH column consists of a boolean value, stating whether GRH was assumed or not when
+computing the data (GRH = true means that GRH was assumed).
+"""
 function completeness_data(db::LibPQ.Connection, G::PermGroup)
   id = _find_group_id(db, G)
   if id === missing
@@ -90,18 +129,25 @@ function completeness_data(db::LibPQ.Connection, G::PermGroup)
   return nothing
 end
 
+@doc Markdown.doc"""
+    completeness_data(db::Database, degree::Int)
+
+Prints a table giving information on the completeness of the table of fields of the degree given as input.
+For each possible Galois group and possible signature, the discriminant bound column shows the value for which it has been proven that
+the table is complete. The GRH column consists of a boolean value, stating whether GRH was assumed or not when
+computing the data (GRH = true means that GRH was assumed).
+"""
 function completeness_data(db::LibPQ.Connection, degree::Int)
   #First, we find the groups.
   query = "SELECT group_id FROM galois_group WHERE degree = \$1"
   result = execute(db, query, [degree], column_types = Dict(:group_id => Int))
-  tg = columntable(result)
-  if tg[1][1] === missing
+  if isempty(result) 
     println("Data not available in the database")
     return nothing
   end
   groups = PermGroup[]
-  for x in tg[1]
-    r = find_group(db, x) 
+  for i in 1:length(result)
+    r = find_group(db, result[i, 1]) 
     if r !== missing
       push!(groups, r)
     end
@@ -121,19 +167,18 @@ function find_completeness_data(connection::LibPQ.Connection, G::PermGroup, sign
   if idG === missing
     return missing
   end
-  query = "SELECT GRH, discriminant_bound FROM completeness WHERE group_id = \$1 AND real_embeddings = \$2"
-  result = execute(connection, query, [idG, signature[1]])
-  data = Tables.rows(result)
-  if isempty(data)
+  query = "SELECT GRH, discriminant_bound FROM completeness WHERE group_id = $(idG) AND real_embeddings = $(signature[1])"
+  result = execute(connection, query, column_types = Dict(:GRH => Bool, :discriminant_bound => BigInt))
+  if isempty(result)
     return missing
   end
   #First result under GRH, second without.
   res = Vector{fmpz}(undef, 2)
-  for x in data
-    if x[1]
-      res[1] = fmpz(BigInt(x[2]))
+  for i = 1:length(result)
+    if result[i, 1]
+      res[1] = fmpz(result[i, 2])
     else
-      res[2] = fmpz(BigInt(x[2]))
+      res[2] = fmpz(result[i, 2])
     end
   end
   if !isassigned(res, 1)

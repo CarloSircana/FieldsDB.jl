@@ -23,6 +23,9 @@ function insert_complete_table(db::LibPQ.Connection, fields::Vector{AnticNumberF
   return nothing
 end
 
+function insert_field(db::LibPQ.Connection, K::AnticNumberField; galois_group::PermGroup = symmetric_group(1))
+  return insert_fields_split(db, [K], galois_group)
+end
 
 function insert_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}; galois_group::PermGroup = symmetric_group(1))
   l = div(length(fields), 1000)+1
@@ -174,11 +177,6 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
   execute(connection, "COMMIT;")
   return nothing
 end
-
-function insert_field(connection::LibPQ.Connection, K::AnticNumberField)
-  return insert_fields(connection, AnticNumberField[K])
-end
-
 
 function insert_class_groups(connection::LibPQ.Connection, groups::Vector{GrpAbFinGen})
   execute(connection, "BEGIN;")

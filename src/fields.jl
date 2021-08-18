@@ -119,9 +119,9 @@ function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only
   #We insert the fields in the database
   if isempty(unramified_outside)
     if only_real
-      insert_complete_table(db, map(number_field, fld_res), GP, absolute_bound, true, (a, 0), check = true)
+      insert_complete_table(db, map(number_field, fld_res), GP, absolute_bound, true, (a, 0))
     else
-      insert_complete_table(db, map(number_field, fld_res), GP, absolute_bound, true, check = true)
+      insert_complete_table(db, map(number_field, fld_res), GP, absolute_bound, true)
     end
   else
     insert_fields(map(number_field, fld_res), db, check = true, galois_group = GP)

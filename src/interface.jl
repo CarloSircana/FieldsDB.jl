@@ -1,8 +1,13 @@
-export fields_database, load_fields, insert_field, insert_fields, insert_complete_table, 
-       ramified_primes
+export fields_database, isregulator_known, isclass_group_known, isgalois_group_known, aresubfields_known,
+        ishilbert_class_field_known, isnormal_closure_known, ramified_primes
 
 Hecke.add_verbose_scope(:FieldsDB)
 
+@doc Markdown.doc"""
+    fields_database(password::String)-> Database
+
+Returns the database.
+"""
 function fields_database(password::String = "")
   if isempty(password)
     return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag")
@@ -27,7 +32,9 @@ mutable struct DBField
   galois_group::PermGroup
   transitive_id::Int
 
-  subfields::Vector
+  subfields::Vector{DBField}
+  normal_closure::DBField
+  hilbert_class_field::DBField
 
   torsion_size::Int
   automorphisms_order::Int 
@@ -57,6 +64,9 @@ mutable struct DBField
 end
 
 function LibPQ.pqparse(::Type{Vector{BigInt}}, x::String)
+  if x == "{}"
+    return BigInt[]
+  end
   s = split(x[2:end-1], ",")
   return BigInt[parse(BigInt, split(ss, ".")[1]) for ss in s]
 end
@@ -80,7 +90,7 @@ end
 function Base.show(io::IO, x::DBField)
   print(io, "Record of a number field")
   if isdefined(x, :polynomial)
-    print(io, "defined by ")
+    print(io, " defined by ")
     print(io, x.polynomial)
   end
   print(io, "\n")
@@ -96,65 +106,68 @@ end
 function areramified_primes_known(x::DBField)
   query = "SELECT ramified_primes FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id], column_types = Dict(:ramified_primes => Vector{BigInt}))
-  tb = columntable(result)[1][1]
-  return tb !== missing
+  return result[1, 1] !== missing
 end
 
 function isregulator_known(x::DBField)
   query = "SELECT regulator FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => BigFloat))
-  data = columntable(result)[1][1]
-  return data !== missing
+  return result[1, 1] !== missing
 end
 
 function isclass_group_known(x::DBField)
   query = "SELECT class_group_id FROM field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data])
-  tb = columntable(result)[1][1]
-  return tb !== missing
+  return result[1, 1] !== missing
 end
 
 function isgalois_group_known(x::DBField)
   query = "SELECT group_id FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
-  return data !== missing
+  return result[1, 1] !== missing
 end
 
 function iscm_property_known(x::DBField)
   query = "SELECT CM FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
-  return data !== missing
+  return result[1, 1] !== missing
 end
 
 function isautomorphism_order_known(x::DBField)
   query = "SELECT automorphisms_order FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
-  return data !== missing
+  return result[1, 1] !== missing
 end
 
 function istorsion_unit_size_known(x::DBField)
   query = "SELECT torsion_size FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
-  return data !== missing
+  return result[1, 1] !== missing
 end
 
 function aresubfields_known(x::DBField)
   query = "SELECT subfields FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  sub = columntable(result)[1]
-  return sub[1] !== missing
+  return result[1, 1] !== missing
 end
 
 function iscanonical_polynomial_known(x::DBField)
   query = "SELECT is_canonical_poly FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
-  return data !== missing 
+  return result[1, 1] !== missing 
+end
+
+function ishilbert_class_field_known(x::DBField)
+  query = "SELECT hilbert_class_field FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  return result[1, 1] !== missing 
+end
+
+function isnormal_closure_known(x::DBField)
+  query = "SELECT normal_closure FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  return result[1, 1] !== missing 
 end
 
 
@@ -164,6 +177,11 @@ end
 #
 ################################################################################
 
+@doc Markdown.doc"""
+    defining_polynomial(x::DBField) -> fmpq_poly
+
+Returns the polynomial defining the field corresponding to the record.
+"""
 function Oscar.defining_polynomial(x::DBField; cached::Bool = true)
   if cached && isdefined(x, :polynomial)
     return x.polynomial
@@ -171,26 +189,31 @@ function Oscar.defining_polynomial(x::DBField; cached::Bool = true)
   query = "SELECT polynomial FROM field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data], column_types = Dict(:polynomial => Vector{BigInt}))
-  data = columntable(result)[1][1]
-  coeffs = Vector{fmpz}(undef, length(data))
-  for i = 1:length(coeffs)
-    coeffs[i] = fmpz(BigInt(data[i]))
-  end
+  coeffs = map(fmpz, result[1, 1])
   Qx = PolynomialRing(FlintQQ, "x", cached = false)[1]
   x.polynomial = Qx(coeffs)
   return x.polynomial
 end
 
+@doc Markdown.doc"""
+    degree(x::DBField) -> Int
+Returns the degree of the field corresponding to the record.
+"""
 function Oscar.degree(x::DBField)
   if x.degree != -1
     return x.degree
   end
   query = "SELECT degree FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  x.degree = columntable(result)[1][1]
+  x.degree = result[1, 1]
   return x.degree
 end
 
+@doc Markdown.doc"""
+    number_field(x::DBField) -> AnticNumberField
+
+Returns the corresponding field.
+"""
 function Oscar.number_field(x::DBField)
   if isdefined(x, :number_field)
     return x.number_field
@@ -200,6 +223,11 @@ function Oscar.number_field(x::DBField)
   return x.number_field
 end
 
+@doc Markdown.doc"""
+    signature(x::DBField) -> Tuple{Int, Int}
+
+Returns the signature of the corresponding field.
+"""
 function Oscar.signature(x::DBField)
   if x.signature[1] != -1
     return x.signature
@@ -207,11 +235,16 @@ function Oscar.signature(x::DBField)
   n = degree(x)
   query = "SELECT real_embeddings FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  real_embs = columntable(result)[1][1]
+  real_embs = result[1, 1]
   x.signature = (real_embs, divexact(n-real_embs, 2))
   return x.signature
 end
 
+@doc Markdown.doc"""
+    discriminant(x::DBField) -> fmpz
+
+Returns the discriminant of the maximal order of the corresponding field.
+"""
 function Oscar.discriminant(x::DBField)
   if isdefined(x, :discriminant)
     return x.discriminant
@@ -219,67 +252,74 @@ function Oscar.discriminant(x::DBField)
   query = "SELECT discriminant FROM field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data], column_types = Dict(:discriminant => BigInt))
-  x.discriminant = fmpz(BigInt(columntable(result)[1][1]))
+  x.discriminant = fmpz(result[1, 1])
   return x.discriminant
 end
 
+@doc Markdown.doc"""
+    ramified_primes(x::DBField) -> Vector{fmpz}
+
+Returns the prime numbers dividing the discriminant of the maximal order of the corresponding field.
+"""
 function ramified_primes(x::DBField)
   if isdefined(x, :ramified_primes)
     return x.ramified_primes
   end
   query = "SELECT ramified_primes FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id], column_types = Dict(:ramified_primes => Vector{BigInt}))
-  tb = columntable(result)[1][1]
-  if tb === missing
+  if result[1, 1] === missing
     return missing
   end
-  tb::Vector{BigInt}
-  l = length(tb)::Int
-  res = Vector{fmpz}(undef, l)
-  for i = 1:l
-    res[i] = fmpz(tb[i])
-  end
+  res = map(fmpz, result[1, 1]::Vector{BigInt})
   x.ramified_primes = res
   return res
 end
 
+@doc Markdown.doc"""
+    class_group(x::DBField) -> GrpAbFinGen
+
+Returns, if known, an abstract group isomorphic to the class group of the corresponding field.
+"""
 function Oscar.class_group(x::DBField; cached::Bool = true)
   if cached  && isdefined(x, :class_group)
     return x.class_group
   end
-  query = "SELECT class_group_id FROM field WHERE field_id = \$1"
-  data = x.id
-  result = execute(x.connection, query, [data])
-  tb = columntable(result)[1][1]
-  if tb === missing
+  query = "SELECT class_group_id FROM field WHERE field_id = $(x.id)"
+  result = execute(x.connection, query)
+  if result[1, 1] === missing
     return missing
   end
-  query1 = "SELECT structure FROM class_group WHERE class_group_id = \$1"
-  result1 = execute(x.connection, query1, [tb], column_types = Dict(:structure => Vector{BigInt}))
-  str = columntable(result1)[1][1]::Vector{BigInt}
-  invs = Vector{fmpz}(undef, length(str))
-  for i = 1:length(invs)
-    invs[i] = fmpz(str[i])
-  end
-  x.class_group = abelian_group(invs)
+  query1 = "SELECT structure FROM class_group WHERE class_group_id = $(result[1, 1])"
+  result1 = execute(x.connection, query1, column_types = Dict(:structure => Vector{BigInt}))
+  r = result1[1, 1]::Vector{BigInt}
+  x.class_group = GrpAbFinGen(r)
   return x.class_group
 end
 
+@doc Markdown.doc"""
+    regulator(x::DBField) -> arb
+
+Returns, if known, the regulator of the corresponding field.
+"""
 function Oscar.regulator(x::DBField)
   if isdefined(x, :regulator)
     return x.regulator
   end
   query = "SELECT regulator FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id], column_types = Dict(:regulator => Decimal))
-  data = columntable(result)[1][1]
-  if data === missing
+  if result[1, 1] === missing
     return missing
   end
-  s = string(data)
+  s = string(result[1, 1])
   R = ArbField(64, cached = false)
   return R(s)
 end
 
+@doc Markdown.doc"""
+    galois_group(x::DBField) -> PermGroup
+
+Returns, if known, a permutation group which is isomorphic (as a permutation group) to the Galois group of the corresponding field.
+"""
 function Oscar.galois_group(x::DBField)
   if isdefined(x, :galois_group)
     return x.galois_group
@@ -287,15 +327,19 @@ function Oscar.galois_group(x::DBField)
   #I need to retrieve it from the database.
   query = "SELECT group_id FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id], column_types = Dict(:group_id => Int))
-  data = columntable(result)[1][1]
-  if data === missing
+  if result[1, 1] === missing
     return missing
   end
-  G = find_group(x.connection, data)
+  G = find_group(x.connection, result[1, 1])
   x.galois_group = G
   return G
 end
 
+@doc Markdown.doc"""
+    is_cm(x::DBField) -> Bool
+
+Returns true whether the corresponding field is a CM field, false otherwise.
+"""
 function is_cm(x::DBField)
   if x.is_cm != 0
     if x.is_cm == -1
@@ -308,11 +352,10 @@ function is_cm(x::DBField)
   end
   query = "SELECT CM FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
+  data = result[1, 1]
   if data === missing
     return missing
-  end
-  if data
+  elseif data
     x.is_cm = 1
     return true
   else
@@ -321,13 +364,18 @@ function is_cm(x::DBField)
   end
 end
 
+@doc Markdown.doc"""
+    automorphisms_order(x::DBField) -> Int
+
+Returns the order of the automorphism group of the corresponding field.
+"""
 function automorphisms_order(x::DBField)
   if x.automorphisms_order != -1
     return x.automorphisms_order
   end
   query = "SELECT automorphisms_order FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
+  data = result[1, 1]
   if data === missing
     return missing
   end
@@ -335,13 +383,18 @@ function automorphisms_order(x::DBField)
   return data
 end
 
+@doc Markdown.doc"""
+    torsion_units_size(x::DBField) -> Int
+
+Returns the order of the torsion units of the corresponding field.
+"""
 function torsion_units_size(x::DBField)
   if x.torsion_size!= -1
     return x.torsion_size
   end
   query = "SELECT torsion_size FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
+  data = result[1, 1]
   if data === missing
     return missing
   end
@@ -361,7 +414,7 @@ function assumes_GRH(x::DBField)
   end
   query = "SELECT GRH FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
+  data = result[1, 1]
   if data === missing
     x.GRH = -1
     return missing
@@ -386,7 +439,7 @@ function has_canonical_defining_polynomial(x::DBField)
   end
   query = "SELECT is_canonical_poly FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  data = columntable(result)[1][1]
+  data = result[1, 1]
   if data === missing
     x.is_canonical_poly = -1
     return missing
@@ -399,21 +452,63 @@ function has_canonical_defining_polynomial(x::DBField)
   end
 end
 
+@doc Markdown.doc"""
+    subfields(x::DBField) -> Vector{DBField}
+
+Returns, if known, the subfields of the corresponding field.
+"""
 function Oscar.subfields(x::DBField)
   if isdefined(x, :subfields)
-    return x.subfields::Vector{DBFields}
+    return x.subfields
   end
   query = "SELECT subfields FROM field WHERE field_id = \$1"
   result = execute(x.connection, query, [x.id])
-  sub = columntable(result)[1]
-  if sub[1] === missing
+  sub = result[1, 1]
+  if sub === missing
     return missing
   end
-  v = sub[1]
-  res = Vector{DBField}(undef, length(v))
-  for i = 1:length(v)
-    res[i] = DBField(x.connection, v[i])
+  res = Vector{DBField}(undef, length(sub))
+  for i = 1:length(res)
+    res[i] = DBField(x.connection, sub[i])
   end
+  return res
+end
+
+@doc Markdown.doc"""
+    normal_closure(x::DBField) -> DBField
+
+Returns, if known, the normal closure of the corresponding field.
+"""
+function Oscar.normal_closure(x::DBField)
+  if isdefined(x, :normal_closure)
+    return x.normal_closure
+  end
+  query = "SELECT normal_closure FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  sub = result[1, 1]
+  if sub === missing
+    return missing
+  end
+  res = DBField(x.connection, sub)
+  return res
+end
+
+@doc Markdown.doc"""
+    hilbert_class_field(x::DBField) -> DBField
+
+Returns, if known, the hilbert_class_field of the corresponding field.
+"""
+function Oscar.hilbert_class_field(x::DBField)
+  if isdefined(x, :hilbert_class_field)
+    return x.hilbert_class_field
+  end
+  query = "SELECT hilbert_class_field FROM field WHERE field_id = \$1"
+  result = execute(x.connection, query, [x.id])
+  sub = result[1, 1]
+  if sub === missing
+    return missing
+  end
+  res = DBField(x.connection, sub)
   return res
 end
 
@@ -482,7 +577,6 @@ function set_automorphisms_order(x::DBField, n::Int)
   execute(x.connection, query, (n, x.id))
   return nothing
 end
-
 
 ################################################################################
 #
@@ -580,13 +674,40 @@ function set_subfields(x::DBField)
   return nothing
 end
 
+function set_normal_closure(x::DBField)
+  f = defining_polynomial(x)
+  L = splitting_field(f)
+  insert_fields(x.connection, AnticNumberField[L])
+  id = find_DBfield(x.connection, L)
+  x.normal_closure = id
+  query = "UPDATE field SET normal_closure = $(id.id) WHERE field_id = $(x.id)"
+  execute(x.connection, query)
+  return nothing
+end
+
+function set_hilbert_class_field(x::DBField)
+  K = number_field(x)
+  L = absolute_simple_field(number_field(hilbert_class_field(K)))[1]
+  insert_fields(x.connection, AnticNumberField[L])
+  id = find_DBfield(x.connection, L)
+  x.normal_closure = id
+  query = "UPDATE field SET hilbert_class_field = $(id.id) WHERE field_id = $(x.id)"
+  execute(x.connection, query)
+  return nothing
+end
 
 ################################################################################
 #
 #  Auxiliary functions
 #
 ################################################################################
+@doc Markdown.doc"""
+    isomorphic_transitive_perm_group(G::Oscar.GAPGroup, degree::Int) -> PermGroup
 
+Given a group $G$, returns a permutation group $GP$ isomorphic to $G$ that is a
+transitive subgroup of the symmetric group over 'degree' points. Throws an error if
+such a group does not exist.
+"""
 function isomorphic_transitive_perm_group(G::Oscar.GAPGroup, deg::Int)
   oG = order(G)
   @assert iszero(mod(oG, deg))
@@ -608,6 +729,11 @@ function isomorphic_transitive_perm_group(G::Oscar.GAPGroup, deg::Int)
   error("Required representation does not exist")
 end
 
+@doc Markdown.doc"""
+    find_automorphisms_order(G::PermGroup) -> Int
+
+Returns the order of the automorphism group of any field with Galois group $G$.
+"""
 function find_automorphisms_order(G::PermGroup)
   oG = order(G)
   deg = degree(G)
@@ -629,6 +755,11 @@ function find_automorphisms_order(G::PermGroup)
   error("Something went wrong")
 end
 
+@doc Markdown.doc"""
+    possible_signatures(G::PermGroup) -> Vector{Tuple{Int, Int}}
+
+Returns the signatures of any field with Galois group $G$.
+"""
 function possible_signatures(G::PermGroup)
   oG = order(G)
   deg = degree(G)
@@ -661,7 +792,7 @@ function possible_signatures(G::PermGroup)
   H = representative(lC[ind_right])
   corr = order(H)
   for i = 1:length(involutions)
-    elts = elements(involutions[i])
+    elts = collect(involutions[i])
     rp = 0
     for j = 1:length(elts)
       I = intersect(H, elts[j])[1]
@@ -694,6 +825,12 @@ function _pdtype_shape(OK::NfOrd, p::Int)
   return res
 end
 
+@doc Markdown.doc"""
+    isomorphism_class_representatives(fields::Vector{AnticNumberField}) -> Vector{AnticNumberField}
+
+Returns a vector of pairwise non isomorphic fields that are representatives for the isomorphism class
+of the fields contained in 'fields'.
+"""
 function isomorphism_class_representatives(v::Vector{AnticNumberField})
   #First, I use signature and discriminant as sieving parameters 
   first_sieve = Dict{Tuple{Int, Int, fmpz}, Vector{Int}}()

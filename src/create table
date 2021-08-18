@@ -48,3 +48,19 @@ CREATE TABLE field(
   is_canonical_poly BOOLEAN,
   subfields BIGINT[]
 );
+
+
+CREATE TABLE minimal_discriminant(
+  group_id INT,
+  real_embeddings SMALLINT,
+  discriminant NUMERIC,
+  fields INT[],
+  PRIMARY KEY(group_id, real_embeddings)
+);
+
+CREATE TABLE fields_by_grp_sign(
+  group_id INT,
+  real_embeddings SMALLINT,
+  number INT,
+  PRIMARY KEY(group_id, real_embeddings)
+);

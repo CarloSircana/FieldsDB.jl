@@ -5,8 +5,6 @@
   for i = 1:length(flds)
     K = number_field(flds[i])
 
-    @test !FieldsDB.areramified_primes_known(flds[i])
-    FieldsDB.set_ramified_primes(flds[i])
     @test FieldsDB.areramified_primes_known(flds[i])
     rpi = ramified_primes(flds[i])
     rp = Set(rpi)
@@ -56,22 +54,17 @@
     f1 = K1.pol(gen(Qx))
     @test f == f1
 
-    FieldsDB.set_automorphisms_order(flds[i])
     @test FieldsDB.isautomorphism_order_known(flds[i])
     auts = automorphisms(K)
     n = FieldsDB.automorphisms_order(flds[i])
     @test length(auts) == n
 
-    @test !FieldsDB.iscm_property_known(flds[i])
-    FieldsDB.set_iscm(flds[i])
     @test FieldsDB.iscm_property_known(flds[i])
     fl = FieldsDB.Hecke.iscm_field(K)[1]
     tf = FieldsDB.is_cm(flds[i])
     @test fl == (tf == 1)
     @test tf == FieldsDB.is_cm(flds[i])
 
-    @test !FieldsDB.istorsion_unit_size_known(flds[i])
-    FieldsDB.set_torsion_unit_size(flds[i])
     @test FieldsDB.istorsion_unit_size_known(flds[i])
     n1 = FieldsDB.Hecke.torsion_units_order(K)
     n2 = FieldsDB.torsion_units_size(flds[i])
@@ -82,13 +75,11 @@ end
 @testset "Quaternion group fields" begin
 
   FieldsDB.fields(8, 4, db, fmpz(10)^12)
-  flds = load_fields(db, degree_range = (8, 8))
+  flds = load_fields(db, degree_range = 8:9)
   @test length(flds) == 2
   for i = 1:length(flds)
     K = number_field(flds[i])
 
-    @test !FieldsDB.areramified_primes_known(flds[i])
-    FieldsDB.set_ramified_primes(flds[i])
     @test FieldsDB.areramified_primes_known(flds[i])
     rpi = ramified_primes(flds[i])
     rp = Set(rpi)
@@ -133,20 +124,15 @@ end
     f1 = K.pol(gen(Qx))
     @test f == f1
 
-    FieldsDB.set_automorphisms_order(flds[i])
     @test FieldsDB.isautomorphism_order_known(flds[i])
     auts = automorphisms(K)
     n = FieldsDB.automorphisms_order(flds[i])
 
-    @test !FieldsDB.iscm_property_known(flds[i])
-    FieldsDB.set_iscm(flds[i])
     @test FieldsDB.iscm_property_known(flds[i])
     fl = FieldsDB.Hecke.iscm_field(K)[1]
     tf = FieldsDB.is_cm(flds[i])
     @test fl == (tf == 1)
 
-    @test !FieldsDB.istorsion_unit_size_known(flds[i])
-    FieldsDB.set_torsion_unit_size(flds[i])
     @test FieldsDB.istorsion_unit_size_known(flds[i])
     n1 = FieldsDB.Hecke.torsion_units_order(K)
     n2 = FieldsDB.torsion_units_size(flds[i])
@@ -155,14 +141,15 @@ end
 end
 
 @testset "Queries" begin
-  @test load_fields(db, signature = (0, 4), only_count = Val{true}) == 1
-  @test load_fields(db, signature = (8, 0), only_count = Val{true}) == 1
-  @test load_fields(db, signature = (4, 0), only_count = Val{true}) == 136
-  @test load_fields(db, discriminant_range = (fmpz(12230590464), fmpz(12230590464)), only_count = Val{true}) == 2
-  @test load_fields(db, signature = (8, 0), class_group_ranks_range = Dict(fmpz(2) => (2, 2)), only_count = Val{true}) == 0
-  @test load_fields(db, signature = (0, 4), class_group_ranks_range = Dict(fmpz(2) => (1, 2)), only_count = Val{true}) == 1
+  lf = load_fields(db, signature = (0, 4))
+  @test length(lf) == 1
+  @test count_fields(db, signature = (8, 0)) == 1
+  @test count_fields(db, signature = (4, 0)) == 136
+  @test count_fields(db, discriminant_range = (fmpz(12230590464), fmpz(12230590464))) == 2
+  @test !contains_field(db, signature = (8, 0), class_group_ranks_range = Dict(fmpz(2) => (2, 2)))
+  @test count_fields(db, signature = (0, 4), class_group_ranks_range = Dict(fmpz(2) => (1, 2))) == 1
   GP = FieldsDB.isomorphic_transitive_perm_group(small_group(4, 2), 4)
-  @test load_fields(db, galois_group = GP, discriminant_range = (-fmpz(10)^10, fmpz(10)^10), only_count = Val{true}) == 136
+  @test count_fields(db, galois_group = GP, discriminant_range = (-fmpz(10)^10, fmpz(10)^10)) == 136
 end
 
 
@@ -181,8 +168,8 @@ end
   f = x^1000-2
   K, a = number_field(f)
   OK = maximal_order(K)
-  insert_field(K, db)
-  x = FieldsDB.find_DBfield(db, K)
+  FieldsDB.insert_field(db, K)
+  x = find_DBfield(db, K)
   @test discriminant(x) == discriminant(OK)
 end
 
