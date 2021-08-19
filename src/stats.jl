@@ -11,20 +11,21 @@ grouped by signature.
 """
 function fields_by_group(db::LibPQ.Connection, G::PermGroup; update::Bool = false)
   if update
-    update_fields_grp_signature(db)
+    update_fields_grp_signature(db, G)
   end
   id = FieldsDB._find_group_id(db, G)
   if id === missing
     println("Group not in database")
   end
-  query = "SELECT real_embeddings, number FROM fields_by_grp_sign WHERE group_id = $(id)"
-  result = Tables.columntable(execute(db, query, column_types = Dict(:number => Int, :real_embeddings => Int)))
-  M = Array{String, 2}(undef, length(result[1]), 2)
-  for i = 1:length(result[1])
-    s = result[1][i]
-    M[i, 1] = "($s, $(div(degree(GP)-s, 2)))"
-    M[i, 2] = string(result[2][i])
+  query = "SELECT real_embeddings, number, last_update FROM fields_by_grp_sign WHERE group_id = $(id)"
+  result = execute(db, query, column_types = Dict(:number => Int, :real_embeddings => Int, :last_update => DateTime))
+  M = Array{String, 2}(undef, length(result), 2)
+  for i = 1:length(result)
+    s = result[i, 1]
+    M[i, 1] = "($s, $(div(degree(G)-s, 2)))"
+    M[i, 2] = string(result[i, 2])
   end
+  println("Last update: $(minimum(DateTime[result[i, 3] for i = 1:length(result)]))")
   t = Tables.table(M)
   pretty_table(t, ["Signature", "Number of fields"], crop = :none)
 end
@@ -40,14 +41,14 @@ function fields_by_group_and_signature(db::LibPQ.Connection; update::Bool = fals
     update_fields_grp_signature(db)
   end
   query = "SELECT * FROM fields_by_grp_sign"
-  result = Tables.columntable(execute(db, query, column_types = Dict(:group_id => Int, :number => Int, :real_embeddings => Int)))
-  M = Array{String, 2}(undef, length(result[1]), 3)
-  for i = 1:length(result[1])
-    GP = find_group(db, result[1][i])
+  result = execute(db, query, column_types = Dict(:group_id => Int, :number => Int, :real_embeddings => Int))
+  M = Array{String, 2}(undef, length(result), 3)
+  for i = 1:length(result)
+    GP = find_group(db, result[i, 1])
     M[i, 1] = _print_group(db, GP)
-    s = result[2][i]
+    s = result[i, 2]
     M[i, 2] = "($s, $(div(degree(GP)-s, 2)))"
-    M[i, 3] = string(result[3][i])
+    M[i, 3] = string(result[i, 3])
   end
   t = Tables.table(M)
   pretty_table(t, ["Galois group", "Signature", "Number of fields"], crop = :none)
@@ -55,55 +56,133 @@ end
 
 function insert_data(db::LibPQ.Connection, grp_id::Int, signature::Int, nmb::Int)
   query = "SELECT * FROM fields_by_grp_sign WHERE group_id = $(grp_id) AND real_embeddings = $(signature) LIMIT 1"
-  result = Tables.columntable(execute(db, query))
-  if length(result[1]) == 1
-    query = "UPDATE fields_by_grp_sign SET number = $(nmb) WHERE group_id = $(grp_id) AND real_embeddings = $(signature)"
-    execute(db, query)
+  result = execute(db, query)
+  if length(result) == 1
+    query = "UPDATE fields_by_grp_sign SET number = $(nmb), last_update=\$1 WHERE group_id = $(grp_id) AND real_embeddings = $(signature)"
+    execute(db, query, [Dates.now()])
   else
     LibPQ.load!(
       (real_embeddings = [signature[1]], 
       group_id = [grp_id],
-      number = [nmb]
+      number = [nmb],
+      last_update = [Dates.now()]
       ),
       db,
       "INSERT INTO fields_by_grp_sign (
         real_embeddings, 
         group_id,
-        automorphisms_order, 
-        number
-      ) VALUES (\$1, \$2, \$3);",
+        number,
+        last_update
+      ) VALUES (\$1, \$2, \$3, \$4);",
     )
   end
+  return nothing
+end
+
+
+
+
+function update_fields_grp_signature(db::LibPQ.Connection, G::PermGroup)
+  grp_id = _find_group_id(db, G)
+  if grp_id === missing
+    return nothing
+  end
+  query = "SELECT real_embeddings, COUNT(field_id) "
+  query *= "FROM field WHERE group_id = $(grp_id) GROUP BY real_embeddings"
+  result = execute(db, query, column_types = Dict(:real_embeddings => Int))
+  for i = 1:length(result)
+    insert_data(db, grp_id, result[i, 1], result[i, 2])
+  end 
   return nothing
 end
 
 function update_fields_grp_signature(db::LibPQ.Connection)
   query = "SELECT group_id, real_embeddings, COUNT(field_id) "
   query *= "FROM field GROUP BY group_id, real_embeddings"
-  result = Tables.columntable(execute(db, query))
-  for i = 1:length(result[1])
-    insert_data(db, result[1][i], result[2][i], result[3][i])
+  result = execute(db, query, column_types = Dict(:real_embeddings => Int))
+  for i = 1:length(result)
+    insert_data(db, result[i, 1], result[i, 2], result[i, 3])
   end 
   return nothing
 end
 
-function fields_by_degree(db::LibPQ.Connection)
-  query = "SELECT degree, real_embeddings, COUNT(field_id) "
-  query *= "FROM field GROUP BY degree, real_embeddings ORDER BY degree, real_embeddings"
-  result = Tables.columntable(execute(db, query, column_types = Dict(:degree => Int, :real_embeddings => Int)))
-  M = Array{String, 2}(undef, length(result[1]), 3)
-  for i = 1:length(result[1])
-    if i == 1 || result[1][i-1] != result[1][i]
-      M[i, 1] = string(result[1][i])
+function fields_by_degree(db::LibPQ.Connection, deg::Int; update::Bool = false)
+  if update
+    update_fields_by_degree(db, deg)
+  end
+  query = "SELECT real_embeddings, number, last_update FROM fields_by_degree WHERE degree = $(deg) ORDER BY real_embeddings"
+  result = execute(db, query, column_types = Dict(:real_embeddings => Int, :number => Int, :last_update => DateTime))
+  println("Last updated: $(minimum([result[i, 3] for i = 1:length(result)]))")
+  M = Array{String, 2}(undef, length(result), 2)
+  for i = 1:length(result)
+    s = result[i, 1]
+    M[i, 1] = "($s, $(div(deg-s, 2)))"
+    M[i, 2] = string(result[i, 2])
+  end
+  t = Tables.table(M)
+  pretty_table(t, ["Signature", "Number of fields"], crop = :none)
+  return nothing
+end
+
+function fields_by_degree(db::LibPQ.Connection; update::Bool = false)
+  if update
+    update_fields_by_degree(db)
+  end
+  query = "SELECT degree, real_embeddings, number, last_update FROM fields_by_degree ORDER BY degree, real_embeddings"
+  result = execute(db, query, column_types = Dict(:degree => Int, :real_embeddings => Int, :number => Int, :last_update => DateTime))
+  println("Last updated: $(minimum([result[i, 4] for i = 1:length(result)]))")
+  M = Array{String, 2}(undef, length(result), 3)
+  for i = 1:length(result)
+    if i == 1 || result[i-1, 1] != result[i, 1]
+      M[i, 1] = string(result[i, 1])
     else
       M[i, 1] = " "
     end
-    s = result[2][i]
-    M[i, 2] = "($s, $(div(result[1][i]-s, 2)))"
-    M[i, 3] = string(result[3][i])
+    s = result[i, 2]
+    M[i, 2] = "($s, $(div(result[i, 1]-s, 2)))"
+    M[i, 3] = string(result[i, 3])
   end
   t = Tables.table(M)
   pretty_table(t, ["Degree", "Signature", "Number of fields"], crop = :none)
+  return nothing
+end
+
+function _has_entry_fields_by_degree(db::LibPQ.Connection, degree::Int, real_embeddings::Int)
+  query = "SELECT 1 FROM fields_by_degree WHERE degree = $(degree) AND real_embeddings = $(real_embeddings)"
+  return !isempty(execute(db, query))
+end
+
+function update_fields_by_degree(db::LibPQ.Connection)
+  for i = 1:150
+    update_fields_by_degree(db, i)
+  end
+  return nothing
+end
+
+function update_fields_by_degree(db::LibPQ.Connection, deg::Int)
+  query = "SELECT real_embeddings, COUNT(*) FROM field WHERE degree = $deg GROUP BY real_embeddings ORDER BY real_embeddings"
+  result = execute(db, query, column_types = Dict(:real_embeddings => Int))
+  for i = 1:length(result)
+    if _has_entry_fields_by_degree(db, deg, result[i, 1])
+      update = "UPDATE fields_by_degree SET number = $(result[i, 2]), last_update = \$1 WHERE degree = $(deg) AND real_embeddings = $(result[i, 1])"
+      execute(db, update, [Dates.now()])
+    else
+      LibPQ.load!(
+        ( degree = [deg],
+        real_embeddings = [result[i, 1]], 
+        number = [result[i, 2]],
+        last_update = [Dates.now()]
+        ),
+        db,
+        "INSERT INTO fields_by_degree (
+          degree,
+          real_embeddings, 
+          number,
+          last_update
+        ) VALUES (\$1, \$2, \$3, \$4);",
+      )
+    end
+  end
   return nothing
 end
 
@@ -190,7 +269,7 @@ function update_minimal_discriminant(db, GP, signature)
     error("Field in database with the required property does not exist!")
   end
   query = "SELECT MIN(ABS(discriminant)) FROM field WHERE group_id = $(grp_id) AND real_embeddings = $(signature[1])"
-  result = execute(db, query)
+  result = execute(db, query, column_types = Dict(:min => BigInt))
   d1 = result[1, 1]
   if d1 === missing
     error("Field in database with the required property does not exist!")
