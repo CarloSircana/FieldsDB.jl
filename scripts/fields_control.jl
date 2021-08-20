@@ -20,7 +20,7 @@ function parse_commandline()
       help = "Number of fields per process"
       arg_type = Int
       default = 1
-    "number_batches"
+    "--number_batches"
       help = "Number of batches to process"
       arg_type = Int
       default = 1
