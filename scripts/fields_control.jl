@@ -20,6 +20,10 @@ function parse_commandline()
       help = "Number of fields per process"
       arg_type = Int
       default = 1
+    "number_batches"
+      help = "Number of batches to process"
+      arg_type = Int
+      default = 1
     "--only_real"
       help = "Only real fields flag"
       action = :store_true
@@ -40,6 +44,7 @@ function main()
   root_disc = 1
   batch_size = 1
   only_real = false
+  number_batches = 1
 
   for (arg, val) in parsed_args
     println("$arg => $val")
@@ -54,22 +59,25 @@ function main()
       root_disc = val
     elseif arg == "batch_size"
       batch_size = val
+    elseif arg == "number_batches"
+      number_batches = val
     elseif arg == "only_real"
       only_real = val
     end
   end
+  @assert isone(number_batches) || isone(batch_size) 
 
   G = small_group(n, i)
   julia_exe = Base.julia_cmd()
   if isabelian(G)
-    fields_abelian_control(n, i, root_disc, batch_size, n_proc, only_real)
+    fields_abelian_control(n, i, root_disc, batch_size, number_batches, n_proc, only_real)
   else
-    fields_nonabelian_control(n, i, root_disc, batch_size, n_proc, only_real)
+    fields_nonabelian_control(n, i, root_disc, batch_size, number_batches, n_proc, only_real)
   end
   return nothing
 end
 
-function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int, n_proc::Int, only_real::Bool)
+function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int, number_batches::Int, n_proc::Int, only_real::Bool)
   discriminant_bound = fmpz(root_disc)^n
   G = small_group(n, i)
   L = derived_series(G)
@@ -108,6 +116,9 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   #Now, we create the batch of fields
   julia_exe = Base.julia_cmd()
   errored_fields = Int[]
+  if !isone(number_batches)
+    batch_size = div(length(ids), number_batches)+1
+  end
   total_number = div(length(ids), batch_size) +1
   procs = Cmd[]
   path_to_file = joinpath(@__DIR__, "fields_parallel_process.jl")
@@ -177,7 +188,7 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   end
 end
 
-function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int, n_proc::Int, only_real::Bool)
+function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int, number_batches::Int, n_proc::Int, only_real::Bool)
   G = GAP.Globals.SmallGroup(n, i)
   li = GAP.gap_to_julia(Vector{Int}, GAP.Globals.AbelianInvariants(G))
   li = map(Int, snf(abelian_group(li))[1].snf)
@@ -189,6 +200,9 @@ function fields_abelian_control(n::Int, i::Int, root_disc::Int, batch_size::Int,
   batch = open("./batch", "w")
   julia_exe = Base.julia_cmd()
   errored_fields = Int[]
+  if !isone(number_batches)
+    batch_size = div(length(conds), number_batches)+1
+  end
   total_number = div(length(conds), batch_size)+1
   procs = Cmd[]
   path_to_file = joinpath(@__DIR__, "fields_abelian_parallel_process.jl")
