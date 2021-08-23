@@ -142,6 +142,10 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
     if ind <= length(procs) && number_running_procs < n_proc
       idsx_start = (ind-1)*batch_size+1
       idsx_end = min(length(ids), ind*batch_size)
+      if idxs_end < idsx_start
+        ind += 1
+        continue
+      end
       idsx = ids[idsx_start:idsx_end]
       f = open("./batch_$(n)_$(i)_$(ind).log", "w")
       print(f, idsx)
