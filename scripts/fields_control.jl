@@ -117,9 +117,14 @@ function fields_nonabelian_control(n::Int, i::Int, root_disc::Int, batch_size::I
   julia_exe = Base.julia_cmd()
   errored_fields = Int[]
   if !isone(number_batches)
-    batch_size = div(length(ids), number_batches)+1
+    if length(ids) >= number_batches
+      batch_size = 1
+      total_number = length(ids)
+    else
+      batch_size = div(length(ids), number_batches)+1
+      total_number = div(length(ids), batch_size) +1
+    end
   end
-  total_number = div(length(ids), batch_size) +1
   procs = Cmd[]
   path_to_file = joinpath(@__DIR__, "fields_parallel_process.jl")
   for s = 1:total_number

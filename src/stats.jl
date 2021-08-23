@@ -245,13 +245,37 @@ function minimal_discriminant(db::LibPQ.Connection, GP::PermGroup, signature::Tu
   @assert signature in possible_signatures(GP)
   if update
     update_minimal_discriminant(db, GP, signature)
-    return _minimal_discriminant(db, GP, signature)
   end
   if !has_entry_minimal_discriminant(db, GP, signature)
-    error("Info not found. Try using the update command")
+    error("Info not found!")
   end
   return _minimal_discriminant(db, GP, signature)
+end
 
+function minimal_fields(db::LibPQ.Connection, GP::PermGroup, signature::Tuple{Int, Int}; update::Bool = true)
+  @assert signature in possible_signatures(GP)
+  if update
+    update_minimal_discriminant(db, GP, signature)
+  end
+  if !has_entry_minimal_discriminant(db, GP, signature)
+    error("Info not found.")
+  end
+  return _minimal_fields(db, GP, signature)
+end
+
+function _minimal_fields(db::LibPQ.Connection, GP::PermGroup, signature::Tuple{Int, Int})
+  grp_id = _find_group_id(db, GP)
+  query = "SELECT fields FROM minimal_discriminant WHERE group_id = $(grp_id) AND real_embeddings = $(signature[1])"
+  res = execute(db, query, column_types = Dict(:fields => Vector{Int}))
+  if isempty(res)
+    return Vector{DBField}()
+  end
+  @assert isone(length(res))
+  fields = Vector{DBField}(undef, length(res[1, 1]))
+  for i = 1:length(res[1, 1])
+    fields[i] = DBField(db, res[1, 1][i])
+  end
+  return fields
 end
 
 function has_entry_minimal_discriminant(db::LibPQ.Connection, GP::PermGroup, signature::Tuple{Int, Int})
@@ -275,11 +299,16 @@ function update_minimal_discriminant(db, GP, signature)
     error("Field in database with the required property does not exist!")
   end
   d = BigInt(d1)
-  query = "SELECT field_id FROM field WHERE group_id = $(grp_id) AND real_embeddings = $(signature[1]) AND discriminant = $(d)"
+  disc_query = d*(-1)^signature[2]
+  query = "SELECT field_id FROM field WHERE group_id = $(grp_id) AND real_embeddings = $(signature[1]) AND discriminant = $(disc_query)"
   result1 = execute(db, query)
   v = Int[result1[i, 1] for i = 1:length(result1)]
   cd = find_completeness_data(db, GP, signature)
-  proof = d <= max(cd[1], cd[2])
+  if cd === missing
+    proof = false
+  else
+    proof = d <= max(cd[1], cd[2])
+  end
   if has_entry_minimal_discriminant(db, GP, signature)
     query = "UPDATE minimal_discriminant SET proven = \$2, fields = \$1, discriminant = $d WHERE group_id = $(grp_id) AND real_embeddings = $(signature[1])"
     execute(db, query, [v, proof])
