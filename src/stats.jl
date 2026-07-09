@@ -236,7 +236,7 @@ function _missing_subfields_by_degree(db::LibPQ.Connection)
 end
 
 @doc Markdown.doc"""
-    minimal_discriminant(db::Database, G::PermGroup, signature::Tuple{Int, Int}) -> Bool, fmpz
+    minimal_discriminant(db::Database, G::PermGroup, signature::Tuple{Int, Int}) -> Bool, ZZRingElem
 
 Returns the minimum absolute discriminant of any fields in the database with the given Galois group and signature
 and a boolean, depending on whether the discriminant has been proven to be minimal or not.
@@ -337,5 +337,5 @@ function _minimal_discriminant(db::LibPQ.Connection, GP::PermGroup, signature::T
   id = _find_group_id(db, GP)
   query = "SELECT discriminant, proven FROM minimal_discriminant WHERE group_id = $id AND real_embeddings = $(signature[1])"
   result = execute(db, query, column_types = Dict(:discriminant => BigInt))
-  return result[1, 2], fmpz(result[1, 1])
+  return result[1, 2], ZZRingElem(result[1, 1])
 end

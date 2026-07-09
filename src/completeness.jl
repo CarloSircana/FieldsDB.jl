@@ -50,11 +50,11 @@ end
 function _construct_matrix(tb, G, db)
   #Now, I need to organize the table for the pretty printing.
   rows_to_consider = Int[]
-  dict = Dict{Tuple{Int, Int}, Vector{Tuple{Bool, fmpz}}}()
+  dict = Dict{Tuple{Int, Int}, Vector{Tuple{Bool, ZZRingElem}}}()
   for i = 1:length(tb)
     sign = (tb[i, 3], div(degree(G)-tb[i, 3], 2))
     fl = tb[i, 1]
-    bound = fmpz(tb[i, 2])
+    bound = ZZRingElem(tb[i, 2])
     if haskey(dict, sign)
       if dict[sign][1][1]
         if dict[sign][1][2] <= bound
@@ -68,7 +68,7 @@ function _construct_matrix(tb, G, db)
         end
       end
     else
-      dict[sign] = Tuple{Bool, fmpz}[(fl, bound)]
+      dict[sign] = Tuple{Bool, ZZRingElem}[(fl, bound)]
     end
   end
   to_print = [(sign, GRH, bound) for (sign, y) in dict for (GRH, bound) in y]
@@ -173,25 +173,25 @@ function find_completeness_data(connection::LibPQ.Connection, G::PermGroup, sign
     return missing
   end
   #First result under GRH, second without.
-  res = Vector{fmpz}(undef, 2)
+  res = Vector{ZZRingElem}(undef, 2)
   for i = 1:length(result)
     if result[i, 1]
-      res[1] = fmpz(result[i, 2])
+      res[1] = ZZRingElem(result[i, 2])
     else
-      res[2] = fmpz(result[i, 2])
+      res[2] = ZZRingElem(result[i, 2])
     end
   end
   if !isassigned(res, 1)
-    res[1] = fmpz()
+    res[1] = ZZRingElem()
   end
   if !isassigned(res, 2)
-    res[2] = fmpz()
+    res[2] = ZZRingElem()
   end
   return res
 end
 
 
-function insert_completeness_data(connection::LibPQ.Connection, group::PermGroup, signature::Tuple{Int, Int}, discriminant_bound::fmpz, GRH::Bool)
+function insert_completeness_data(connection::LibPQ.Connection, group::PermGroup, signature::Tuple{Int, Int}, discriminant_bound::ZZRingElem, GRH::Bool)
   cd = find_completeness_data(connection, group, signature)
   if cd !== missing
     @show "here"
