@@ -2,6 +2,7 @@ export fields_database, isregulator_known, isclass_group_known, isgalois_group_k
         ishilbert_class_field_known, isnormal_closure_known, ramified_primes
 
 Hecke.add_verbose_scope(:FieldsDB)
+@show :possibl
 
 @doc Markdown.doc"""
     fields_database(password::String)-> Database
@@ -9,10 +10,11 @@ Hecke.add_verbose_scope(:FieldsDB)
 Returns the database.
 """
 function fields_database(password::String = "")
+  @show :hallo
   if isempty(password)
-    return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag")
+    return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=mir")
   else
-    return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=agag password=" * password)
+    return LibPQ.Connection("host=tabularix dbname=fields port=5432 user=mir password=" * password)
   end
 end
 
@@ -20,13 +22,13 @@ mutable struct DBField
   id::Int
   connection::LibPQ.Connection
   degree::Int
-  polynomial::fmpq_poly
-  number_field::AnticNumberField
-  class_group::GrpAbFinGen
-  discriminant::fmpz
-  ramified_primes::Vector{fmpz}
+  polynomial::QQPolyRingElem
+  number_field::AbsSimpleNumField
+  class_group::FinGenAbGroup
+  discriminant::ZZRingElem
+  ramified_primes::Vector{ZZRingElem}
   
-  regulator::arb
+  regulator::ArbFieldElem
   signature::Tuple{Int, Int}
 
   galois_group::PermGroup
@@ -178,7 +180,7 @@ end
 ################################################################################
 
 @doc Markdown.doc"""
-    defining_polynomial(x::DBField) -> fmpq_poly
+    defining_polynomial(x::DBField) -> QQPolyRingElem
 
 Returns the polynomial defining the field corresponding to the record.
 """
@@ -189,8 +191,8 @@ function Oscar.defining_polynomial(x::DBField; cached::Bool = true)
   query = "SELECT polynomial FROM field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data], column_types = Dict(:polynomial => Vector{BigInt}))
-  coeffs = map(fmpz, result[1, 1])
-  Qx = PolynomialRing(FlintQQ, "x", cached = false)[1]
+  coeffs = map(ZZRingElem, result[1, 1])
+  Qx = polynomial_ring(QQ, "x", cached = false)[1]
   x.polynomial = Qx(coeffs)
   return x.polynomial
 end
@@ -210,7 +212,7 @@ function Oscar.degree(x::DBField)
 end
 
 @doc Markdown.doc"""
-    number_field(x::DBField) -> AnticNumberField
+    number_field(x::DBField) -> AbsSimpleNumField
 
 Returns the corresponding field.
 """
@@ -241,7 +243,7 @@ function Oscar.signature(x::DBField)
 end
 
 @doc Markdown.doc"""
-    discriminant(x::DBField) -> fmpz
+    discriminant(x::DBField) -> ZZRingElem
 
 Returns the discriminant of the maximal order of the corresponding field.
 """
@@ -252,12 +254,12 @@ function Oscar.discriminant(x::DBField)
   query = "SELECT discriminant FROM field WHERE field_id = \$1"
   data = x.id
   result = execute(x.connection, query, [data], column_types = Dict(:discriminant => BigInt))
-  x.discriminant = fmpz(result[1, 1])
+  x.discriminant = ZZRingElem(result[1, 1])
   return x.discriminant
 end
 
 @doc Markdown.doc"""
-    ramified_primes(x::DBField) -> Vector{fmpz}
+    ramified_primes(x::DBField) -> Vector{ZZRingElem}
 
 Returns the prime numbers dividing the discriminant of the maximal order of the corresponding field.
 """
@@ -270,13 +272,13 @@ function ramified_primes(x::DBField)
   if result[1, 1] === missing
     return missing
   end
-  res = map(fmpz, result[1, 1]::Vector{BigInt})
+  res = map(ZZRingElem, result[1, 1]::Vector{BigInt})
   x.ramified_primes = res
   return res
 end
 
 @doc Markdown.doc"""
-    class_group(x::DBField) -> GrpAbFinGen
+    class_group(x::DBField) -> FinGenAbGroup
 
 Returns, if known, an abstract group isomorphic to the class group of the corresponding field.
 """
@@ -292,12 +294,12 @@ function Oscar.class_group(x::DBField; cached::Bool = true)
   query1 = "SELECT structure FROM class_group WHERE class_group_id = $(result[1, 1])"
   result1 = execute(x.connection, query1, column_types = Dict(:structure => Vector{BigInt}))
   r = result1[1, 1]::Vector{BigInt}
-  x.class_group = GrpAbFinGen(r)
+  x.class_group = FinGenAbGroup(r)
   return x.class_group
 end
 
 @doc Markdown.doc"""
-    regulator(x::DBField) -> arb
+    regulator(x::DBField) -> ArbFieldElem
 
 Returns, if known, the regulator of the corresponding field.
 """
@@ -518,7 +520,7 @@ end
 #
 ################################################################################
 
-function set_polynomial(x::DBField, f::fmpq_poly; is_canonical::Bool = false)
+function set_polynomial(x::DBField, f::QQPolyRingElem; is_canonical::Bool = false)
   pol = BigInt[BigInt(numerator(coeff(f, i))) for i = 0:degree(f)]
   query = "UPDATE field SET polynomial = \$1, is_canonical_poly = \$2 WHERE field_id = \$3"
   execute(x.connection, query, (pol, is_canonical, x.id))
@@ -526,7 +528,7 @@ function set_polynomial(x::DBField, f::fmpq_poly; is_canonical::Bool = false)
   return nothing
 end
 
-function set_ramified_primes(x::DBField, lp::Vector{fmpz})
+function set_ramified_primes(x::DBField, lp::Vector{ZZRingElem})
   rp = BigInt[BigInt(x) for x in lp]
   query = "UPDATE field  SET ramified_primes = \$1  WHERE field_id = \$2"
   execute(x.connection, query, (rp, x.id))
@@ -544,7 +546,7 @@ function set_galois_group(x::DBField, G::PermGroup)
   return nothing
 end
 
-function set_class_group(x::DBField, C::GrpAbFinGen; GRH::Bool = true)
+function set_class_group(x::DBField, C::FinGenAbGroup; GRH::Bool = true)
   id = _find_class_group_id(x.connection, C)
   if id === missing
     insert_class_group(x.connection, C)
@@ -653,7 +655,7 @@ function set_subfields(x::DBField)
   else
     subfs = subfields(K)
   end
-  subs = AnticNumberField[y[1] for y in subfs]
+  subs = AbsSimpleNumField[y[1] for y in subfs]
   for i = 1:length(subs)
     subs[i] = simplify(subs[i], cached = false, save_LLL_basis = false)[1]
     @assert isdefining_polynomial_nice(subs[i])
@@ -677,7 +679,7 @@ end
 function set_normal_closure(x::DBField)
   f = defining_polynomial(x)
   L = splitting_field(f)
-  insert_fields(x.connection, AnticNumberField[L])
+  insert_fields(x.connection, AbsSimpleNumField[L])
   id = find_DBfield(x.connection, L)
   x.normal_closure = id
   query = "UPDATE field SET normal_closure = $(id.id) WHERE field_id = $(x.id)"
@@ -688,7 +690,7 @@ end
 function set_hilbert_class_field(x::DBField)
   K = number_field(x)
   L = absolute_simple_field(number_field(hilbert_class_field(K)))[1]
-  insert_fields(x.connection, AnticNumberField[L])
+  insert_fields(x.connection, AbsSimpleNumField[L])
   id = find_DBfield(x.connection, L)
   x.normal_closure = id
   query = "UPDATE field SET hilbert_class_field = $(id.id) WHERE field_id = $(x.id)"
@@ -812,7 +814,7 @@ function possible_signatures(G::PermGroup)
   return possible_sigs
 end
 
-function _pdtype_shape(OK::NfOrd, p::Int)
+function _pdtype_shape(OK::AbsSimpleNumFieldOrder, p::Int)
   pd = prime_decomposition_type(OK, p)
   res = Dict{Tuple{Int, Int}, Int}()
   for x in pd
@@ -826,14 +828,14 @@ function _pdtype_shape(OK::NfOrd, p::Int)
 end
 
 @doc Markdown.doc"""
-    isomorphism_class_representatives(fields::Vector{AnticNumberField}) -> Vector{AnticNumberField}
+    isomorphism_class_representatives(fields::Vector{AbsSimpleNumField}) -> Vector{AbsSimpleNumField}
 
 Returns a vector of pairwise non isomorphic fields that are representatives for the isomorphism class
 of the fields contained in 'fields'.
 """
-function isomorphism_class_representatives(v::Vector{AnticNumberField})
+function isomorphism_class_representatives(v::Vector{AbsSimpleNumField})
   #First, I use signature and discriminant as sieving parameters 
-  first_sieve = Dict{Tuple{Int, Int, fmpz}, Vector{Int}}()
+  first_sieve = Dict{Tuple{Int, Int, ZZRingElem}, Vector{Int}}()
   for i = 1:length(v)
     x = v[i]
     d = degree(x)
@@ -888,7 +890,7 @@ function isomorphism_class_representatives(v::Vector{AnticNumberField})
     end
   end
   #Now, check isomorphisms.
-  res = Vector{AnticNumberField}()
+  res = Vector{AbsSimpleNumField}()
   for x in clusters
     if length(x) == 1
       push!(res, v[x[1]])
@@ -982,9 +984,9 @@ end
 #
 ################################################################################
 
-function _string(x::arb, digits::Int)
-   cstr = ccall((:arb_get_str, Hecke.Nemo.libarb), Ptr{UInt8},
-                (Ref{arb}, Int, UInt),
+function _string(x::ArbFieldElem, digits::Int)
+   cstr = ccall((:ArbFieldElem_get_str, Hecke.Nemo.libArbFieldElem), Ptr{UInt8},
+                (Ref{ArbFieldElem}, Int, UInt),
                 x, Int(digits), UInt(2))
    res = unsafe_string(cstr)
    ccall((:flint_free, Hecke.Nemo.libflint), Nothing,
@@ -993,7 +995,7 @@ function _string(x::arb, digits::Int)
    return res
 end
 
-function _regulator_as_string(K::AnticNumberField, scale::Int = 20)
+function _regulator_as_string(K::AbsSimpleNumField, scale::Int = 20)
   p = Int(ceil(3.3 * (scale + 2)))
   # make radius less than 10^(-(scale + 2))
   U, mU = unit_group_fac_elem(maximal_order(K))
@@ -1001,7 +1003,7 @@ function _regulator_as_string(K::AnticNumberField, scale::Int = 20)
   return _string(r, scale)
 end
 
-function _regulator_as_decimal(K::AnticNumberField, scale::Int = 20)
+function _regulator_as_decimal(K::AbsSimpleNumField, scale::Int = 20)
   return decimal(_regulator_as_string(K, scale))
 end
 

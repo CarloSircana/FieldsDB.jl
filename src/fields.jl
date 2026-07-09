@@ -4,7 +4,7 @@ function field_context(x::DBField)
   return Hecke.field_context(number_field(x))
 end
 
-function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only_real::Bool = false, unramified_outside::Vector{fmpz} = fmpz[])
+function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::ZZRingElem; only_real::Bool = false, unramified_outside::Vector{ZZRingElem} = ZZRingElem[])
   G = GAP.Globals.SmallGroup(a, b)
   GP = isomorphic_transitive_perm_group(PcGroup(G), a)
   ps = Tuple{Int, Int}[(a, 0)]
@@ -12,11 +12,11 @@ function fields(a::Int, b::Int, db::LibPQ.Connection, absolute_bound::fmpz; only
     push!(ps, (0, divexact(a, 2)))
   end
   is_complete = true
-  bound_db = fmpz(10)^10000
+  bound_db = ZZRingElem(10)^10000
   for sgn in ps
     dbound_completeness = find_completeness_data(db, GP, sgn)
     if dbound_completeness === missing
-      bound_db = fmpz()
+      bound_db = ZZRingElem()
       is_complete = false
       break
     end

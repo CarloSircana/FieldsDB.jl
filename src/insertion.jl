@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-function insert_complete_table(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup, discriminant_bound::fmpz, GRH::Bool = true, signature::Tuple{Int, Int} = (-1, 0))
+function insert_complete_table(db::LibPQ.Connection, fields::Vector{AbsSimpleNumField}, galois_group::PermGroup, discriminant_bound::ZZRingElem, GRH::Bool = true, signature::Tuple{Int, Int} = (-1, 0))
   g_id = _find_group_id(db, galois_group)
   if g_id === missing
     insert_group(db, galois_group)
@@ -23,11 +23,11 @@ function insert_complete_table(db::LibPQ.Connection, fields::Vector{AnticNumberF
   return nothing
 end
 
-function insert_field(db::LibPQ.Connection, K::AnticNumberField; galois_group::PermGroup = symmetric_group(1))
+function insert_field(db::LibPQ.Connection, K::AbsSimpleNumField; galois_group::PermGroup = symmetric_group(1))
   return insert_fields_split(db, [K], galois_group)
 end
 
-function insert_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}; galois_group::PermGroup = symmetric_group(1))
+function insert_fields(db::LibPQ.Connection, fields::Vector{AbsSimpleNumField}; galois_group::PermGroup = symmetric_group(1))
   l = div(length(fields), 1000)+1
   for i = 1:l
     println("Inserting batch $i / $l")
@@ -39,7 +39,7 @@ function insert_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}; g
   return nothing
 end
 
-function insert_fields_split(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup = symmetric_group(1))
+function insert_fields_split(db::LibPQ.Connection, fields::Vector{AbsSimpleNumField}, galois_group::PermGroup = symmetric_group(1))
   println("Sieving fields\n")
   @time flds = _sieve_fields(db, fields, galois_group)
   println("Inserting fields\n")
@@ -47,15 +47,15 @@ function insert_fields_split(db::LibPQ.Connection, fields::Vector{AnticNumberFie
   return nothing
 end
 
-function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, galois_group::PermGroup)
-  discs = collect(Set(fmpz[discriminant(maximal_order(x)) for x in fields]))
+function _sieve_fields(db::LibPQ.Connection, fields::Vector{AbsSimpleNumField}, galois_group::PermGroup)
+  discs = collect(Set(ZZRingElem[discriminant(maximal_order(x)) for x in fields]))
   if degree(galois_group) != 1
     lf = load_fields_with_discriminant(db, discs)
   else
     lf = load_fields_with_discriminant(db, discs, galois_group)
   end
   #First, we sieve the fields so that we remove the duplicates
-  fields_to_insert = AnticNumberField[]
+  fields_to_insert = AbsSimpleNumField[]
   for x in fields
     dx = degree(x)
     polx = collect(coefficients(defining_polynomial(x)))
@@ -93,7 +93,7 @@ function _sieve_fields(db::LibPQ.Connection, fields::Vector{AnticNumberField}, g
   return fields_to_insert
 end
 
-function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Connection; galois_group = symmetric_group(1))
+function _insert_fields(fields::Vector{AbsSimpleNumField}, connection::LibPQ.Connection; galois_group = symmetric_group(1))
   if order(galois_group) > 1
     g_id = _find_group_id(connection, galois_group)
     if g_id === missing
@@ -178,7 +178,7 @@ function _insert_fields(fields::Vector{AnticNumberField}, connection::LibPQ.Conn
   return nothing
 end
 
-function insert_class_groups(connection::LibPQ.Connection, groups::Vector{GrpAbFinGen})
+function insert_class_groups(connection::LibPQ.Connection, groups::Vector{FinGenAbGroup})
   execute(connection, "BEGIN;")
   for C in groups
     o = BigInt(order(C))
@@ -212,7 +212,7 @@ function insert_class_groups(connection::LibPQ.Connection, groups::Vector{GrpAbF
   return nothing
 end
 
-function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
+function insert_class_group(connection::LibPQ.Connection, C::FinGenAbGroup)
   o = BigInt(order(C))
   str = map(BigInt, snf(C)[1].snf)
   lf = factor(exponent(C))
@@ -220,7 +220,7 @@ function insert_class_group(connection::LibPQ.Connection, C::GrpAbFinGen)
   sort!(divs)
   ranks = Vector{Int}(undef, length(divs))
   for i = 1:length(divs)
-    ranks[i] = rank(C, fmpz(divs[i]))
+    ranks[i] = rank(C, ZZRingElem(divs[i]))
   end
   LibPQ.load!(
     (group_order = [o], 

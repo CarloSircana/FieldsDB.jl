@@ -6,7 +6,7 @@ export load_fields, count_fields, contains_field, find_DBfield
 #
 ################################################################################
 
-function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{fmpz}, galois_group::PermGroup)
+function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{ZZRingElem}, galois_group::PermGroup)
   discs = BigInt[BigInt(x) for x in discriminants]
   params = Vector{BigInt}[discs]
   if degree(galois_group) == 1
@@ -23,14 +23,14 @@ function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vect
   for i = 1:length(res)
     f = DBField(db, result[i, 1])
     f.degree = d
-    f.polynomial = Qx(map(fmpz, result[i, 2]))
-    f.discriminant = fmpz(result[i, 3])
+    f.polynomial = Qx(map(ZZRingElem, result[i, 2]))
+    f.discriminant = ZZRingElem(result[i, 3])
     res[i] = f
   end
   return res
 end
 
-function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{fmpz}, deg::Int = -1)
+function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vector{ZZRingElem}, deg::Int = -1)
   discs = BigInt[BigInt(x) for x in discriminants]
   params = Vector{BigInt}[discs]
   if deg == -1
@@ -43,18 +43,18 @@ function load_fields_with_discriminant(db::LibPQ.Connection, discriminants::Vect
   Qx = PolynomialRing(FlintQQ, "x")[1]
   for i = 1:length(res)
     f = DBField(db, result[i, 1])
-    f.polynomial = Qx(map(fmpz, result[i, 2]))
+    f.polynomial = Qx(map(ZZRingElem, result[i, 2]))
     f.degree = degree(f.polynomial)
-    f.discriminant = fmpz(result[i, 3])
+    f.discriminant = ZZRingElem(result[i, 3])
     res[i] = f
   end
   return res
 end
 
-function _set_query(connection, degree::Int, degree_range::UnitRange{Int}, discriminant_range::Tuple{fmpz, fmpz}, 
-                    signature::Tuple{Int, Int}, unramified_outside::Vector{fmpz}, ramified_at::Vector{fmpz},
-                    galois_group::PermGroup, only_cm::Bool, class_number::Union{Int, fmpz}, class_group,
-                    class_group_structure::Vector{fmpz}, class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}})
+function _set_query(connection, degree::Int, degree_range::UnitRange{Int}, discriminant_range::Tuple{ZZRingElem, ZZRingElem}, 
+                    signature::Tuple{Int, Int}, unramified_outside::Vector{ZZRingElem}, ramified_at::Vector{ZZRingElem},
+                    galois_group::PermGroup, only_cm::Bool, class_number::Union{Int, ZZRingElem}, class_group,
+                    class_group_structure::Vector{ZZRingElem}, class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}})
 
   parameters = String[]
   values = []
@@ -121,7 +121,7 @@ function _set_query(connection, degree::Int, degree_range::UnitRange{Int}, discr
     push!(parameters, "class_group_id = $(id_class_group)")
   end
   if !(class_group isa Bool)
-    @assert class_group isa GrpAbFinGen
+    @assert class_group isa FinGenAbGroup
     id_class_group = _find_class_group_id(connection, class_group)
     if id_class_group === missing
       class_group_id = -1
@@ -162,22 +162,22 @@ The possible keyword arguments are:
 
 - degree::Int => The degree of the required fields.
 - degree_range::UnitRange{Int} => The range of the degree of the required fields.
-- discriminant_range::Tuple{fmpz, fmpz} => The interval the discriminant of the required fields must belong to.
+- discriminant_range::Tuple{ZZRingElem, ZZRingElem} => The interval the discriminant of the required fields must belong to.
 - signature::Tuple{Int, Int} => The signature of the required fields.
-- unramified_outside::Vector{fmpz} => Prime numbers not dividing the discriminant of the required fields.
-- ramified_at::Vector{fmpz} => Prime numbers that must divide the discriminant of the required fields.
+- unramified_outside::Vector{ZZRingElem} => Prime numbers not dividing the discriminant of the required fields.
+- ramified_at::Vector{ZZRingElem} => Prime numbers that must divide the discriminant of the required fields.
 - galois_group::PermGroup => The Galois group of the required fields.
 - class_number::Int => The class number of the required fields.
-- class_group_structure::Vector{fmpz} => The invariants of the class group as an abelian group of the required fields.
-- class_group::GrpAbFinGen => The class group of the required fields.
-- class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} => A dictionary containings as keys prime numbers whose corresponding
+- class_group_structure::Vector{ZZRingElem} => The invariants of the class group as an abelian group of the required fields.
+- class_group::FinGenAbGroup => The class group of the required fields.
+- class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}} => A dictionary containings as keys prime numbers whose corresponding
                     values are the possible range of the rank of the class group of the required fields at those prime.
 """
-function count_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
-                      signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
+function count_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{ZZRingElem, ZZRingElem} = (ZZRingElem(0), ZZRingElem(-1)), 
+                      signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{ZZRingElem} = ZZRingElem[], ramified_at::Vector{ZZRingElem} = ZZRingElem[],
                       galois_group::PermGroup = symmetric_group(1), only_cm::Bool = false, class_number::Int = -1, 
-                      class_group_structure::Vector{fmpz} = fmpz[-1], class_group = false,
-                      class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}())
+                      class_group_structure::Vector{ZZRingElem} = ZZRingElem[-1], class_group = false,
+                      class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}} = Dict{ZZRingElem, Tuple{Int, Int}}())
 
   parameters, values, ind = _set_query(connection, degree, degree_range, discriminant_range, signature, unramified_outside, ramified_at, galois_group, only_cm,
                                       class_number, class_group, class_group_structure,  class_group_ranks_range)
@@ -202,22 +202,22 @@ The possible keyword arguments are:
 
 - degree::Int => The degree of the required fields.
 - degree_range::UnitRange{Int} => The range of the degree of the required fields.
-- discriminant_range::Tuple{fmpz, fmpz} => The interval the discriminant of the required fields must belong to.
+- discriminant_range::Tuple{ZZRingElem, ZZRingElem} => The interval the discriminant of the required fields must belong to.
 - signature::Tuple{Int, Int} => The signature of the required fields.
-- unramified_outside::Vector{fmpz} => Prime numbers not dividing the discriminant of the required fields.
-- ramified_at::Vector{fmpz} => Prime numbers that must divide the discriminant of the required fields.
+- unramified_outside::Vector{ZZRingElem} => Prime numbers not dividing the discriminant of the required fields.
+- ramified_at::Vector{ZZRingElem} => Prime numbers that must divide the discriminant of the required fields.
 - galois_group::PermGroup => The Galois group of the required fields.
 - class_number::Int => The class number of the required fields.
-- class_group_structure::Vector{fmpz} => The invariants of the class group as an abelian group of the required fields.
-- class_group::GrpAbFinGen => The class group of the required fields.
-- class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} => A dictionary containings as keys prime numbers whose corresponding
+- class_group_structure::Vector{ZZRingElem} => The invariants of the class group as an abelian group of the required fields.
+- class_group::FinGenAbGroup => The class group of the required fields.
+- class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}} => A dictionary containings as keys prime numbers whose corresponding
                     values are the possible range of the rank of the class group of the required fields at those prime.
 """
-function contains_field(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
-  signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
+function contains_field(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{ZZRingElem, ZZRingElem} = (ZZRingElem(0), ZZRingElem(-1)), 
+  signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{ZZRingElem} = ZZRingElem[], ramified_at::Vector{ZZRingElem} = ZZRingElem[],
   galois_group::PermGroup = symmetric_group(1), only_cm::Bool = false,  class_number::Int = -1, 
-  class_group_structure::Vector{fmpz} = fmpz[-1], class_group = false,
-  class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}())
+  class_group_structure::Vector{ZZRingElem} = ZZRingElem[-1], class_group = false,
+  class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}} = Dict{ZZRingElem, Tuple{Int, Int}}())
   
   parameters, values, ind = _set_query(connection, degree, degree_range, discriminant_range, signature, unramified_outside, ramified_at, galois_group, only_cm,
   class_number, class_group, class_group_structure,  class_group_ranks_range)
@@ -244,22 +244,22 @@ The possible keyword arguments are:
 
 - degree::Int => The degree of the required fields.
 - degree_range::UnitRange{Int} => The range of the degree of the required fields.
-- discriminant_range::Tuple{fmpz, fmpz} => The interval the discriminant of the required fields must belong to.
+- discriminant_range::Tuple{ZZRingElem, ZZRingElem} => The interval the discriminant of the required fields must belong to.
 - signature::Tuple{Int, Int} => The signature of the required fields.
-- unramified_outside::Vector{fmpz} => Prime numbers not dividing the discriminant of the required fields.
-- ramified_at::Vector{fmpz} => Prime numbers that must divide the discriminant of the required fields.
+- unramified_outside::Vector{ZZRingElem} => Prime numbers not dividing the discriminant of the required fields.
+- ramified_at::Vector{ZZRingElem} => Prime numbers that must divide the discriminant of the required fields.
 - galois_group::PermGroup => The Galois group of the required fields.
 - class_number::Int => The class number of the required fields.
-- class_group_structure::Vector{fmpz} => The invariants of the class group as an abelian group of the required fields.
-- class_group::GrpAbFinGen => The class group of the required fields.
-- class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} => A dictionary containings as keys prime numbers whose corresponding
+- class_group_structure::Vector{ZZRingElem} => The invariants of the class group as an abelian group of the required fields.
+- class_group::FinGenAbGroup => The class group of the required fields.
+- class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}} => A dictionary containings as keys prime numbers whose corresponding
                     values are the possible range of the rank of the class group of the required fields at those prime.
 """
-function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{fmpz, fmpz} = (fmpz(0), fmpz(-1)), 
-                         signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{fmpz} = fmpz[], ramified_at::Vector{fmpz} = fmpz[],
+function load_fields(connection::LibPQ.Connection; degree::Int = -1, degree_range::UnitRange{Int} = -1:-1, discriminant_range::Tuple{ZZRingElem, ZZRingElem} = (ZZRingElem(0), ZZRingElem(-1)), 
+                         signature::Tuple{Int, Int} = (-1, 0), unramified_outside::Vector{ZZRingElem} = ZZRingElem[], ramified_at::Vector{ZZRingElem} = ZZRingElem[],
                          galois_group::PermGroup = symmetric_group(1), only_cm::Bool = false, class_number::Int = -1, 
-                         class_group_structure::Vector{fmpz} = fmpz[-1],  class_group = false,
-                         class_group_ranks_range::Dict{fmpz, Tuple{Int, Int}} = Dict{fmpz, Tuple{Int, Int}}())
+                         class_group_structure::Vector{ZZRingElem} = ZZRingElem[-1],  class_group = false,
+                         class_group_ranks_range::Dict{ZZRingElem, Tuple{Int, Int}} = Dict{ZZRingElem, Tuple{Int, Int}}())
 
 
   parameters, values, ind = _set_query(connection, degree, degree_range, discriminant_range, signature, unramified_outside, ramified_at, galois_group, only_cm,
@@ -322,7 +322,7 @@ function _find_group_id(connection::LibPQ.Connection, G::PermGroup)
   return missing
 end
 
-function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
+function _find_class_group_id(connection::LibPQ.Connection, C::FinGenAbGroup)
   if isone(order(C))
     query = "SELECT class_group_id FROM class_group WHERE group_order = 1 LIMIT 1"
     result = execute(connection, query, column_types = Dict(:class_group_id => Int64))
@@ -346,7 +346,7 @@ function _find_class_group_id(connection::LibPQ.Connection, C::GrpAbFinGen)
   end
 end
 
-function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, Tuple{Int, Int}})
+function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{ZZRingElem, Tuple{Int, Int}})
   #I want to find the class group ids of the class group having the rank as required.
   divs = [BigInt(x) for x in keys(ranks)]
   sort!(divs)
@@ -364,7 +364,7 @@ function _find_class_group_ids(connection::LibPQ.Connection, ranks::Dict{fmpz, T
         ind += 1
       end
       @assert divsi[ind] == divs[i]
-      vs = ranks[fmpz(divs[i])]
+      vs = ranks[ZZRingElem(divs[i])]
       if vs[1] > ranksi[ind] || vs[2] < ranksi[ind] 
         acceptable = false
         break
@@ -406,7 +406,7 @@ function find_group(connection::LibPQ.Connection, id::Int)
   return H
 end
 
-function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField; already_in_DB::Bool = false)
+function find_DBfield(connection::LibPQ.Connection, K::AbsSimpleNumField; already_in_DB::Bool = false)
   #First, I check whether the polynomial defining K is in the database.
   if !isdefining_polynomial_nice(K)
     K = simplify(K, cached = false, save_LLL_basis = false)[1]
@@ -439,7 +439,7 @@ function find_DBfield(connection::LibPQ.Connection, K::AnticNumberField; already
     end
   end
   for x in lf
-    fl = isisomorphic(K, number_field(x))[1]
+    fl = is_isomorphic(K, number_field(x))[1]
     if fl
       return x
     end

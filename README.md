@@ -14,7 +14,7 @@ Here is a quick example of using FieldsDB:
 julia> using FieldsDB
 ...
 julia> db = fields_database();
-julia> lf = load_fields(db, degree = 2, discriminant_range = (fmpz(8), fmpz(8)))
+julia> lf = load_fields(db, degree = 2, discriminant_range = (ZZ(8), ZZ(8)))
 1-element Vector{FieldsDB.DBField}:
  Record of a number field
 julia> K = number_field(lf[1])
@@ -24,7 +24,7 @@ GrpAb: Z/1
 julia> regulator(lf[1])
 [0.8813735870195430252 +/- 6.76e-20]
 
-julia> Qx, x = FlintQQ["x"];
+julia> Qx, x = QQ["x"];
 julia> K, a = number_field(x^2+5, cached = false)
 (Number field over Rational Field with defining polynomial x^2 + 5, _a)
 julia> r = find_DBfield(db, K)
